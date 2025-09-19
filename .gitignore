@@ -1,0 +1,36 @@
+# === Python / Django ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.log
+db.sqlite3
+.env
+venv/
+.env.local
+.env.*.local
+
+# Django specific
+/static/
+media/
+
+# === Node / Frontend ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+.next/
+dist/
+build/
+
+# === IDE / OS ===
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

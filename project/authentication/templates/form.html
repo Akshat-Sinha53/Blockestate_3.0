@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Form</title>
+</head>
+<body>
+  <form method="POST" action="/submit/">
+    {% csrf_token %}
+    Aadhaar: <input type="text" name="aadhaar"><br>
+    PAN: <input type="text" name="pan"><br>
+    <input type="submit" value="Submit">
+  </form>
+</body>
+</html>
