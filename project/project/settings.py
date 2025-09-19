@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,8 +38,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'authentication',
-    'corsheaders'
+    'property',
 
 ]
 
@@ -139,3 +141,15 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Email settings for Gmail
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = config('GMAIL_USER', default='')
+EMAIL_HOST_PASSWORD = config('GMAIL_APP_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = f'Block Estate <{config("GMAIL_USER", default="noreply@blockestate.com")}>'
+
+# For development, you can also use console backend to test without actual email
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

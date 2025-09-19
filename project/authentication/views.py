@@ -30,7 +30,8 @@ def verify_aadhaar_pan(request):
         if not user:
             return JsonResponse({"success": False, "message": "No record found"})
 
-        email = user.get("email")
+        # Support both 'Email' and 'email' keys in Cloudant doc
+        email = user.get("Email") or user.get("email")
         if not email:
             return JsonResponse({"success": False, "message": "Email missing in record"})
 
