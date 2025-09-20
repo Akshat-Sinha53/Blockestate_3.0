@@ -388,11 +388,36 @@ export default function DashboardPage() {
               <div className="text-xs text-muted-foreground">Only chats related to this property are listed.</div>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="text-sm">Enter the OTP sent to the seller email to proceed.</div>
-              <Input value={txSellerOtp} onChange={(e) => setTxSellerOtp(e.target.value)} placeholder="Enter seller OTP" />
-              <div className="text-xs text-muted-foreground">After verifying, the buyer will receive an OTP in their email (printed in backend terminal for dev).</div>
-              <div className="text-xs">Transaction ID: {txId} • Status: {txStatus}</div>
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <div className="text-sm">Enter the OTP sent to the seller email to proceed.</div>
+                <Input value={txSellerOtp} onChange={(e) => setTxSellerOtp(e.target.value)} placeholder="Enter seller OTP" />
+                <div className="text-xs text-muted-foreground">After verifying, the buyer will receive an OTP in their email (printed in backend terminal for dev).</div>
+                <div className="text-xs">Transaction ID: {txId} • Status: {txStatus}</div>
+              </div>
+
+              {txStatus === 'PENDING_BUYER_OTP' && txId && (
+                <div className="rounded-lg border p-3 bg-background/60 space-y-2">
+                  <div className="text-sm font-medium">Share with Buyer</div>
+                  <div className="text-xs text-muted-foreground">Send the buyer this link to verify their OTP and continue the transfer.</div>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      readOnly
+                      value={(typeof window !== 'undefined' ? `${window.location.origin}` : '') + `/tx/${txId}`}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const link = (typeof window !== 'undefined' ? `${window.location.origin}` : '') + `/tx/${txId}`;
+                        navigator.clipboard.writeText(link);
+                      }}
+                    >
+                      Copy Link
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
