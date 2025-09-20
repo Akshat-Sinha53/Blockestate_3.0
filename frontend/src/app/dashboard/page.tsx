@@ -16,12 +16,9 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, MessageCircle, PlusCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
-import type { PropertyDoc, UserProfile, ChatWithDetails } from "@/lib/types";
+import type { PropertyDoc, UserProfile, ChatWithDetails, TransactionsListItem } from "@/lib/types";
 
-const mockTxs = [
-  { id: "0x9f3a...c21b", type: "Stamp Duty", amount: "₹ 1,20,000", status: "Success" },
-  { id: "0x71be...42aa", type: "Ownership Transfer", amount: "-", status: "Pending" },
-];
+// Transactions are now fetched from the backend; mock removed
 
 export default function DashboardPage() {
   const { userEmail } = useAuth();
@@ -32,6 +29,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string>("");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chats, setChats] = useState<ChatWithDetails[]>([]);
+  const [txs, setTxs] = useState<TransactionsListItem[]>([]);
 
   // Transfer modal state
   const [txOpen, setTxOpen] = useState(false);
@@ -79,7 +77,17 @@ export default function DashboardPage() {
         // ignore for now
       }
     }
+    async function loadTransactions() {
+      if (!userEmail) return;
+      try {
+        const res = await apiClient.getUserTransactions(userEmail);
+        if (res.success) setTxs(res.transactions || []);
+      } catch (e) {
+        // ignore for now
+      }
+    }
     loadChats();
+    loadTransactions();
   }, [userEmail]);
 
   const verifiedCount = useMemo(() => properties.filter(p => (p.status || "").toLowerCase() === "verified").length, [properties]);
@@ -188,20 +196,27 @@ export default function DashboardPage() {
 
         <TabsContent value="transactions" className="mt-6">
           <div className="grid gap-4 sm:grid-cols-2">
-            {mockTxs.map((t) => (
-              <Card key={t.id} className="border-border/60 bg-card/60 backdrop-blur">
-                <CardHeader>
-                  <CardTitle className="text-base">{t.type}</CardTitle>
-                  <CardDescription>Status: {t.status}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between gap-2">
-                  <div className="text-sm">Amount: <span className="font-medium">{t.amount}</span></div>
-                  <Button variant="outline" size="sm" className="gap-2" onClick={() => navigator.clipboard.writeText(t.id)}>
-                    <Copy className="h-4 w-4"/> {t.id.slice(0,6)}...{t.id.slice(-4)}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+            {txs.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No transactions yet.</div>
+            ) : (
+              txs.map((t) => (
+                <Card key={t.id} className="border-border/60 bg-card/60 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-base">Property {t.property_id}</CardTitle>
+                    <CardDescription>Status: {t.status}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex items-center justify-between gap-2">
+                    <div className="text-sm">
+                      With: <span className="font-medium">{t.counterpart || '—'}</span><br/>
+                      <span className="text-xs text-muted-foreground">Updated: {t.updated_at ? new Date(t.updated_at).toLocaleString() : '—'}</span>
+                    </div>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => navigator.clipboard.writeText(t.id)}>
+                      <Copy className="h-4 w-4"/> {t.id.slice(0,6)}...{t.id.slice(-4)}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </TabsContent>
 

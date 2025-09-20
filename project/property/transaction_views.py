@@ -14,6 +14,7 @@ from project.utils.cloudant_client import (
     remove_property_from_sale,
     get_prop_docs,
     assign_random_surveyor,
+    find_transactions_for_user,
 )
 
 # Simple OTP stores for transaction flow
@@ -102,12 +103,6 @@ def initiate_transfer(request):
     if isinstance(tx, dict) and tx.get('error'):
         return _error(f"Failed to create transaction: {tx['error']}", 500)
 
-    # Remove from sale listings if present
-    try:
-        remove_property_from_sale(property_id)
-    except Exception as e:
-        print(f"Transaction init: remove from sale failed: {e}")
-
     # Generate and store seller OTP
     otp = str(random.randint(100000, 999999))
     TX_OTP_SELLER[seller_email] = otp
@@ -152,6 +147,13 @@ def verify_seller_otp(request):
         b_otp = str(random.randint(100000, 999999))
         TX_OTP_BUYER[buyer_email] = b_otp
         print(f"TX BUYER OTP for {buyer_email}: {b_otp}")
+
+    # Now that seller verified, remove the property from sale listings
+    try:
+        if tx.get('property_id'):
+            remove_property_from_sale(tx.get('property_id'))
+    except Exception as e:
+        print(f"Seller OTP verified but remove from sale failed: {e}")
 
     return _ok(transaction={"id": tx.get("_id"), "status": tx.get("status")})
 
@@ -257,3 +259,45 @@ def buyer_agree(request):
     update_transaction_doc(tx)
 
     return _ok(transaction={"id": tx.get("_id"), "status": tx.get("status")})
+
+
+@csrf_exempt
+def list_transactions(request):
+    """
+    List transactions for a user (seller or buyer or both).
+    POST body: { user_email: str, role?: 'seller'|'buyer', status?: str }
+    """
+    if request.method != 'POST':
+        return _error('POST required', 405)
+    body = _require_json(request)
+    if body is None:
+        return _error('Invalid JSON')
+
+    user_email = body.get('user_email')
+    role = body.get('role')  # optional
+    status = body.get('status')  # optional
+
+    if not user_email:
+        return _error('user_email is required')
+
+    try:
+        docs = find_transactions_for_user(user_email, role=role, status=status)
+        # Format lightweight response for dashboard
+        txs = []
+        for d in docs:
+            counterpart = None
+            if d.get('seller_email') and d.get('seller_email') != user_email:
+                counterpart = d.get('seller_email')
+            elif d.get('buyer_email') and d.get('buyer_email') != user_email:
+                counterpart = d.get('buyer_email')
+            txs.append({
+                'id': d.get('_id'),
+                'property_id': d.get('property_id'),
+                'status': d.get('status'),
+                'updated_at': d.get('updated_at') or d.get('created_at'),
+                'counterpart': counterpart
+            })
+        return _ok(transactions=txs, count=len(txs))
+    except Exception as e:
+        print(f"Error listing transactions: {e}")
+        return _error('Error listing transactions', 500)

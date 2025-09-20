@@ -145,6 +145,13 @@ export class ApiClient {
       body: JSON.stringify({ transaction_id, buyer_email, agree }),
     });
   }
+
+  async getUserTransactions(user_email: string, role?: 'buyer' | 'seller') {
+    return this.request<TransactionsListResponse>('/api/property/transactions/list/', {
+      method: 'POST',
+      body: JSON.stringify({ user_email, role }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

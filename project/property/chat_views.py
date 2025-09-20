@@ -10,7 +10,9 @@ from project.utils.cloudant_client import (
     get_chat_by_id, 
     mark_messages_as_read,
     get_property_by_id,
-    find_user_by_email
+    find_user_by_email,
+    get_property_sale_details,
+    find_user_by_wallet,
 )
 
 @csrf_exempt
@@ -46,6 +48,10 @@ def initiate_chat(request):
             if not buyer_doc:
                 return JsonResponse({"success": False, "message": "Authentication required"}, status=403)
 
+            # Prepare normalized emails (for chat) without affecting the auth check above
+            norm_buyer_email = buyer_email.strip().lower()
+            norm_seller_email = None if not seller_email else seller_email.strip().lower()
+
             # If seller email not provided, derive from property owner wallet
             if not seller_email:
                 property_data = get_property_by_id(property_id)
@@ -63,19 +69,54 @@ def initiate_chat(request):
                     or property_data.get("Wallet")
                     or property_data.get("walletAddress")
                 )
+                
+                # Fallback: consult registered_for_sale entry for this property to get seller wallet
+                if not wallet_address:
+                    try:
+                        sale_details = get_property_sale_details(property_id)
+                    except Exception as e:
+                        print(f"Error fetching sale details for {property_id}: {e}")
+                        sale_details = None
+                    if sale_details:
+                        wallet_address = (
+                            sale_details.get("wallet_address")
+                            or sale_details.get("wallet")
+                            or sale_details.get("Wallet")
+                            or sale_details.get("walletAddress")
+                        )
+                
                 if not wallet_address:
                     return JsonResponse({
                         "success": False, 
                         "message": "Property owner information not found"
                     }, status=404)
                 
-                # Lookup seller by wallet in app-users
+                # Lookup seller by wallet in user databases
                 try:
-                    from project.utils.cloudant_client import find_user_by_wallet
                     seller_doc = find_user_by_wallet(wallet_address)
                 except Exception as e:
                     print(f"Error resolving seller by wallet: {e}")
                     seller_doc = None
+                
+                if not seller_doc:
+                    # As a last resort, try resolving via sale_details again if different casing/value
+                    try:
+                        if 'sale_details' not in locals() or sale_details is None:
+                            sale_details = get_property_sale_details(property_id)
+                        if sale_details:
+                            candidates = [
+                                sale_details.get("wallet_address"),
+                                sale_details.get("wallet"),
+                                sale_details.get("Wallet"),
+                                sale_details.get("walletAddress"),
+                            ]
+                            for cand in [c for c in candidates if c]:
+                                seller_doc = find_user_by_wallet(cand)
+                                if seller_doc:
+                                    break
+                    except Exception as e:
+                        print(f"Secondary seller resolution failed: {e}")
+                        seller_doc = None
                 
                 if not seller_doc:
                     return JsonResponse({"success": False, "message": "Seller not found for this property"}, status=404)
@@ -83,18 +124,19 @@ def initiate_chat(request):
                 seller_email = seller_doc.get("Email") or seller_doc.get("email")
                 if not seller_email:
                     return JsonResponse({"success": False, "message": "Seller email not available"}, status=404)
+                norm_seller_email = seller_email.strip().lower()
 
-            # Prevent self-chat
-            if seller_email == buyer_email:
+            # Prevent self-chat (case-insensitive)
+            if (norm_seller_email or (seller_email and seller_email.strip().lower())) == norm_buyer_email:
                 return JsonResponse({"success": False, "message": "Cannot initiate chat with yourself"}, status=400)
             
             # DEBUG: log resolution context
             try:
-                print(f"CHAT_INIT property_id={property_id}, buyer={buyer_email}, seller={seller_email}")
+                print(f"CHAT_INIT property_id={property_id}, buyer={norm_buyer_email}, seller={norm_seller_email or (seller_email and seller_email.strip().lower())}")
             except Exception:
                 pass
-            # Create or get existing chat
-            chat_result = create_or_get_chat(property_id, buyer_email, seller_email)
+            # Create or get existing chat with normalized emails
+            chat_result = create_or_get_chat(property_id, norm_buyer_email, norm_seller_email or (seller_email and seller_email.strip().lower()))
             
             if "error" in chat_result:
                 return JsonResponse({
@@ -152,14 +194,18 @@ def send_chat_message(request):
                 }, status=404)
             
             participants = chat.get("participants", [])
-            if sender_email not in participants:
+            try:
+                participants_lower = [p.lower() for p in participants if isinstance(p, str)]
+            except Exception:
+                participants_lower = participants
+            if sender_email.strip().lower() not in participants_lower:
                 return JsonResponse({
                     "success": False, 
                     "message": "You are not a participant in this chat"
                 }, status=403)
             
             # Send the message
-            message_result = send_message(chat_id, sender_email, message_text)
+            message_result = send_message(chat_id, sender_email.strip().lower(), message_text)
             
             if "error" in message_result:
                 return JsonResponse({
@@ -201,16 +247,20 @@ def get_chat_history(request, chat_id):
             
             user_email = request.GET.get("user_email")
             if user_email:
-                # Verify user is a participant
+                # Verify user is a participant (case-insensitive)
                 participants = chat.get("participants", [])
-                if user_email not in participants:
+                try:
+                    participants_lower = [p.lower() for p in participants if isinstance(p, str)]
+                except Exception:
+                    participants_lower = participants
+                if user_email.strip().lower() not in participants_lower:
                     return JsonResponse({
                         "success": False, 
                         "message": "You are not a participant in this chat"
                     }, status=403)
                 
                 # Mark messages as read for this user
-                mark_messages_as_read(chat_id, user_email)
+                mark_messages_as_read(chat_id, user_email.strip().lower())
             
             # Get messages
             messages = get_chat_messages(chat_id)

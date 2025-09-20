@@ -24,4 +24,5 @@ urlpatterns = [
     path('transactions/verify-buyer-otp/', transaction_views.verify_buyer_otp, name='verify_buyer_otp'),
     path('transactions/surveyor-approve/', transaction_views.surveyor_approve, name='surveyor_approve'),
     path('transactions/buyer-agree/', transaction_views.buyer_agree, name='buyer_agree'),
+    path('transactions/list/', transaction_views.list_transactions, name='list_transactions'),
 ]

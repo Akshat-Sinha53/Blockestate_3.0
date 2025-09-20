@@ -8,6 +8,27 @@ service = CloudantV1(authenticator=authenticator)
 
 service.set_service_url(settings.CLOUDANT["url"])
 
+# --- Helpers: ensure DBs and indexes exist ---
+def ensure_db(db_name: str):
+    """Best-effort create of a database if it doesn't exist."""
+    try:
+        service.put_database(db=db_name)
+    except Exception:
+        # Ignore if exists or if lacking permissions; operations may still succeed if DB exists
+        pass
+
+def ensure_index(db_name: str, fields, name: str | None = None):
+    """Best-effort index creation for Mango queries/sorts."""
+    try:
+        index_def = {"fields": fields}
+        if name:
+            service.post_index(db=db_name, index=index_def, name=name)
+        else:
+            service.post_index(db=db_name, index=index_def)
+    except Exception:
+        # Ignore if index exists or if lacking permissions
+        pass
+
 # Quick test
 def list_databases():
     response = service.get_all_dbs().get_result()
@@ -123,7 +144,8 @@ def find_user_by_email(email):
 
 def find_user_by_wallet(wallet_address):
     """
-    Find a user document by wallet address in 'app-users'.
+    Find a user document by wallet address.
+    Searches 'app-users' first, then falls back to 'govt-citizen'.
     Handles schema variants: 'wallet_adrdess', 'wallet', 'Wallet', 'wallet_address', 'walletAddress'.
     Tries both the provided value and its lowercase form, to be resilient to case differences.
     Returns the first matching document or None.
@@ -138,6 +160,8 @@ def find_user_by_wallet(wallet_address):
         "wallet_address",
         "walletAddress",
     ]
+    # Databases to search in order
+    db_candidates = ["app-users", "govt-citizen"]
     candidates = [wallet_address]
     try:
         wl = str(wallet_address)
@@ -145,16 +169,17 @@ def find_user_by_wallet(wallet_address):
             candidates.append(wl.lower())
     except Exception:
         pass
-    for field in field_variants:
-        for val in candidates:
-            try:
-                selector = {field: {"$eq": val}}
-                resp = service.post_find(db="app-users", selector=selector).get_result()
-                docs = resp.get("docs", [])
-                if docs:
-                    return docs[0]
-            except Exception as e:
-                print(f"find_user_by_wallet error for field {field} value {val}: {e}")
+    for db_name in db_candidates:
+        for field in field_variants:
+            for val in candidates:
+                try:
+                    selector = {field: {"$eq": val}}
+                    resp = service.post_find(db=db_name, selector=selector).get_result()
+                    docs = resp.get("docs", [])
+                    if docs:
+                        return docs[0]
+                except Exception as e:
+                    print(f"find_user_by_wallet error in {db_name} for field {field} value {val}: {e}")
     return None
 
 # Property management functions
@@ -176,7 +201,11 @@ def get_property_by_id(property_id):
         response = service.get_document(db="property-details", doc_id=property_id).get_result()
         return response
     except Exception as e:
-        print(f"Doc fetch by _id failed for {property_id}: {e}")
+        try:
+            if settings.DEBUG:
+                print(f"Doc fetch by _id failed for {property_id}: {e}")
+        except Exception:
+            pass
         # Fallback: search by domain field 'property_id' or legacy 'propert_id'
         try:
             # Try property_id first
@@ -306,14 +335,23 @@ def create_or_get_chat(property_id, buyer_email, seller_email):
     Returns the chat document.
     """
     from datetime import datetime
+
+    # Ensure DB and relevant indexes exist
+    ensure_db("property-chats")
+    ensure_index("property-chats", ["participants", "last_message_at"])  # used in queries/sorts
+
+    # Normalize emails for consistent matching/storage
+    try:
+        b = buyer_email.strip().lower() if isinstance(buyer_email, str) else buyer_email
+        s = seller_email.strip().lower() if isinstance(seller_email, str) else seller_email
+    except Exception:
+        b, s = buyer_email, seller_email
     
     try:
-        # First try to find existing chat
+        # First try to find existing chat with normalized emails
         selector = {
             "property_id": {"$eq": property_id},
-            "participants": {
-                "$all": [buyer_email, seller_email]
-            }
+            "participants": {"$all": [b, s]}
         }
         response = service.post_find(db="property-chats", selector=selector).get_result()
         existing_chats = response.get("docs", [])
@@ -322,13 +360,14 @@ def create_or_get_chat(property_id, buyer_email, seller_email):
             return existing_chats[0]
         
         # Create new chat if none exists
+        now_iso = datetime.now().isoformat()
         chat_doc = {
             "property_id": property_id,
-            "participants": [buyer_email, seller_email],
-            "buyer_email": buyer_email,
-            "seller_email": seller_email,
-            "created_at": datetime.now().isoformat(),
-            "last_message_at": datetime.now().isoformat(),
+            "participants": [b, s],
+            "buyer_email": b,
+            "seller_email": s,
+            "created_at": now_iso,
+            "last_message_at": now_iso,
             "status": "active"
         }
         
@@ -346,11 +385,22 @@ def send_message(chat_id, sender_email, message_text):
     Send a message in a chat. Messages are stored in a separate 'chat-messages' database.
     """
     from datetime import datetime
+
+    # Ensure DBs and indexes exist
+    ensure_db("chat-messages")
+    ensure_index("chat-messages", ["chat_id", "timestamp"])  # used in queries/sorts
+    ensure_db("property-chats")
+
+    # Normalize sender email for consistent storage
+    try:
+        s = sender_email.strip().lower() if isinstance(sender_email, str) else sender_email
+    except Exception:
+        s = sender_email
     
     try:
         message_doc = {
             "chat_id": chat_id,
-            "sender_email": sender_email,
+            "sender_email": s,
             "message_text": message_text,
             "timestamp": datetime.now().isoformat(),
             "read": False
@@ -378,6 +428,10 @@ def get_chat_messages(chat_id, limit=50):
     """
     Get all messages for a specific chat, ordered by timestamp.
     """
+    # Ensure DB and index exist
+    ensure_db("chat-messages")
+    ensure_index("chat-messages", ["chat_id", "timestamp"])  # required for sort
+
     try:
         selector = {
             "chat_id": {"$eq": chat_id}
@@ -403,24 +457,35 @@ def get_user_chats(user_email):
     """
     Get all chats for a user (both as buyer and seller).
     """
+    # Ensure DB and index exist
+    ensure_db("property-chats")
+    ensure_index("property-chats", ["participants", "last_message_at"])  # used in selector+sort
+
+    # Normalize email for matching
+    try:
+        u = user_email.strip().lower() if isinstance(user_email, str) else user_email
+    except Exception:
+        u = user_email
+
     try:
         selector = {
-            "participants": {
-                "$in": [user_email]
-            },
+            # Match documents where 'participants' array contains the user email
+            "participants": {"$all": [u]},
             "status": {"$eq": "active"}
         }
-        
-        # Sort by last_message_at descending (most recent first)
-        sort = [{"last_message_at": "desc"}]
-        
+
         response = service.post_find(
-            db="property-chats", 
-            selector=selector, 
-            sort=sort
+            db="property-chats",
+            selector=selector
         ).get_result()
-        
-        return response.get("docs", [])
+
+        docs = response.get("docs", [])
+        # Sort in Python by last_message_at desc
+        try:
+            docs.sort(key=lambda d: d.get("last_message_at") or "", reverse=True)
+        except Exception:
+            pass
+        return docs
         
     except Exception as e:
         print(f"Error fetching user chats: {e}")
@@ -430,6 +495,7 @@ def get_chat_by_id(chat_id):
     """
     Get a specific chat by its ID.
     """
+    ensure_db("property-chats")
     try:
         response = service.get_document(db="property-chats", doc_id=chat_id).get_result()
         return response
@@ -441,12 +507,20 @@ def mark_messages_as_read(chat_id, reader_email):
     """
     Mark all messages in a chat as read for a specific user.
     """
+    ensure_db("chat-messages")
+
+    # Normalize email to match stored lowercased sender_email
+    try:
+        r = reader_email.strip().lower() if isinstance(reader_email, str) else reader_email
+    except Exception:
+        r = reader_email
+
     try:
         # Get all unread messages in the chat that are NOT from the reader
         selector = {
             "chat_id": {"$": "eq", "eq": chat_id} if False else {"$eq": chat_id},
             "read": {"$eq": False},
-            "sender_email": {"$ne": reader_email}
+            "sender_email": {"$ne": r}
         }
         
         response = service.post_find(db="chat-messages", selector=selector).get_result()
@@ -553,4 +627,59 @@ def update_transaction_doc(tx_doc):
     except Exception as e:
         print(f"Error updating transaction: {e}")
         return {"error": str(e)}
+
+def find_transactions_for_user(user_email, role=None, status=None):
+    """
+    Find transactions for a user. If role is 'seller' or 'buyer', filter accordingly; otherwise include both.
+    Optional status filter. Emails are matched against both original and lowercased variants for resilience.
+    Returns a list of transaction docs sorted by updated_at desc (fallback created_at).
+    """
+    ensure_db("in-transaction")
+    if not user_email:
+        return []
+    try:
+        email = str(user_email)
+        el = email.lower()
+    except Exception:
+        email = user_email
+        el = user_email
+
+    # Build OR conditions based on role
+    conds = []
+    if role == 'seller':
+        conds = [
+            {"seller_email": {"$eq": email}},
+            {"seller_email": {"$eq": el}},
+        ]
+    elif role == 'buyer':
+        conds = [
+            {"buyer_email": {"$eq": email}},
+            {"buyer_email": {"$eq": el}},
+        ]
+    else:
+        conds = [
+            {"seller_email": {"$eq": email}},
+            {"seller_email": {"$eq": el}},
+            {"buyer_email": {"$eq": email}},
+            {"buyer_email": {"$eq": el}},
+        ]
+
+    selector = {"$or": conds}
+    if status:
+        selector["status"] = {"$eq": status}
+
+    try:
+        resp = service.post_find(db="in-transaction", selector=selector).get_result()
+        docs = resp.get("docs", [])
+        # Sort by updated_at desc (fallback created_at)
+        def _key(d):
+            return d.get("updated_at") or d.get("created_at") or ""
+        try:
+            docs.sort(key=_key, reverse=True)
+        except Exception:
+            pass
+        return docs
+    except Exception as e:
+        print(f"Error finding transactions for user {user_email}: {e}")
+        return []
 

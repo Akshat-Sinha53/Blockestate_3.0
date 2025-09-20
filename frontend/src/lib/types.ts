@@ -161,3 +161,18 @@ export interface TxResponse {
   transaction?: Transaction;
   message?: string;
 }
+
+export interface TransactionsListItem {
+  id: string;
+  property_id: string;
+  status: string;
+  updated_at?: string;
+  counterpart?: string;
+}
+
+export interface TransactionsListResponse {
+  success: boolean;
+  transactions: TransactionsListItem[];
+  count: number;
+  message?: string;
+}
