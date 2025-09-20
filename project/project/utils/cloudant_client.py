@@ -181,3 +181,238 @@ def update_property(property_data):
         return {"error": "Document with _id required"}
     response = service.post_document(db="property-details", document=property_data).get_result()
     return response
+
+# Register for Sale database functions
+def insert_property_for_sale(property_id, asking_price, wallet_address=None):
+    """
+    Insert a property into the registered_for_sale database.
+    This will be used to track properties available in the marketplace.
+    """
+    from datetime import datetime
+    sale_doc = {
+        "property_id": property_id,
+        "asking_price": asking_price,
+        "wallet_address": wallet_address,
+        "listed_date": datetime.now().isoformat(),  # Set current date/time
+        "status": "active"
+    }
+    
+    try:
+        response = service.post_document(db="registered_for_sale", document=sale_doc).get_result()
+        return response
+    except Exception as e:
+        print(f"Error inserting property for sale: {e}")
+        return {"error": str(e)}
+
+def get_all_properties_for_sale():
+    """
+    Get all active properties from the registered_for_sale database.
+    """
+    try:
+        selector = {"status": {"$eq": "active"}}
+        response = service.post_find(db="registered_for_sale", selector=selector).get_result()
+        return response.get("docs", [])
+    except Exception as e:
+        print(f"Error fetching properties for sale: {e}")
+        return []
+
+def remove_property_from_sale(property_id):
+    """
+    Remove a property from sale by marking it as inactive or deleting the record.
+    """
+    try:
+        # Find the document first
+        selector = {"property_id": {"$eq": property_id}}
+        response = service.post_find(db="registered_for_sale", selector=selector).get_result()
+        docs = response.get("docs", [])
+        
+        if docs:
+            doc = docs[0]
+            doc["status"] = "sold"  # Mark as sold instead of deleting
+            update_response = service.post_document(db="registered_for_sale", document=doc).get_result()
+            return update_response
+        else:
+            return {"error": "Property not found in sale listings"}
+    except Exception as e:
+        print(f"Error removing property from sale: {e}")
+        return {"error": str(e)}
+
+def get_property_sale_details(property_id):
+    """
+    Get sale details for a specific property from register-for-sale database.
+    """
+    try:
+        selector = {
+            "property_id": {"$eq": property_id},
+            "status": {"$eq": "active"}
+        }
+        response = service.post_find(db="register-for-sale", selector=selector).get_result()
+        docs = response.get("docs", [])
+        return docs[0] if docs else None
+    except Exception as e:
+        print(f"Error fetching property sale details: {e}")
+        return None
+
+# Chat system functions
+def create_or_get_chat(property_id, buyer_email, seller_email):
+    """
+    Create a new chat or get existing chat between buyer and seller for a property.
+    Returns the chat document.
+    """
+    from datetime import datetime
+    
+    try:
+        # First try to find existing chat
+        selector = {
+            "property_id": {"$eq": property_id},
+            "participants": {
+                "$all": [buyer_email, seller_email]
+            }
+        }
+        response = service.post_find(db="property-chats", selector=selector).get_result()
+        existing_chats = response.get("docs", [])
+        
+        if existing_chats:
+            return existing_chats[0]
+        
+        # Create new chat if none exists
+        chat_doc = {
+            "property_id": property_id,
+            "participants": [buyer_email, seller_email],
+            "buyer_email": buyer_email,
+            "seller_email": seller_email,
+            "created_at": datetime.now().isoformat(),
+            "last_message_at": datetime.now().isoformat(),
+            "status": "active"
+        }
+        
+        create_response = service.post_document(db="property-chats", document=chat_doc).get_result()
+        chat_doc["_id"] = create_response.get("id")
+        chat_doc["_rev"] = create_response.get("rev")
+        return chat_doc
+        
+    except Exception as e:
+        print(f"Error creating/getting chat: {e}")
+        return {"error": str(e)}
+
+def send_message(chat_id, sender_email, message_text):
+    """
+    Send a message in a chat. Messages are stored in a separate 'chat-messages' database.
+    """
+    from datetime import datetime
+    
+    try:
+        message_doc = {
+            "chat_id": chat_id,
+            "sender_email": sender_email,
+            "message_text": message_text,
+            "timestamp": datetime.now().isoformat(),
+            "read": False
+        }
+        
+        response = service.post_document(db="chat-messages", document=message_doc).get_result()
+        
+        # Update the chat's last_message_at timestamp
+        try:
+            chat_doc = service.get_document(db="property-chats", doc_id=chat_id).get_result()
+            chat_doc["last_message_at"] = datetime.now().isoformat()
+            service.post_document(db="property-chats", document=chat_doc)
+        except Exception as chat_update_error:
+            print(f"Error updating chat timestamp: {chat_update_error}")
+        
+        message_doc["_id"] = response.get("id")
+        message_doc["_rev"] = response.get("rev")
+        return message_doc
+        
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        return {"error": str(e)}
+
+def get_chat_messages(chat_id, limit=50):
+    """
+    Get all messages for a specific chat, ordered by timestamp.
+    """
+    try:
+        selector = {
+            "chat_id": {"$eq": chat_id}
+        }
+        
+        # Sort by timestamp ascending (oldest first)
+        sort = [{"timestamp": "asc"}]
+        
+        response = service.post_find(
+            db="chat-messages", 
+            selector=selector, 
+            sort=sort,
+            limit=limit
+        ).get_result()
+        
+        return response.get("docs", [])
+        
+    except Exception as e:
+        print(f"Error fetching chat messages: {e}")
+        return []
+
+def get_user_chats(user_email):
+    """
+    Get all chats for a user (both as buyer and seller).
+    """
+    try:
+        selector = {
+            "participants": {
+                "$in": [user_email]
+            },
+            "status": {"$eq": "active"}
+        }
+        
+        # Sort by last_message_at descending (most recent first)
+        sort = [{"last_message_at": "desc"}]
+        
+        response = service.post_find(
+            db="property-chats", 
+            selector=selector, 
+            sort=sort
+        ).get_result()
+        
+        return response.get("docs", [])
+        
+    except Exception as e:
+        print(f"Error fetching user chats: {e}")
+        return []
+
+def get_chat_by_id(chat_id):
+    """
+    Get a specific chat by its ID.
+    """
+    try:
+        response = service.get_document(db="property-chats", doc_id=chat_id).get_result()
+        return response
+    except Exception as e:
+        print(f"Error fetching chat by ID: {e}")
+        return None
+
+def mark_messages_as_read(chat_id, reader_email):
+    """
+    Mark all messages in a chat as read for a specific user.
+    """
+    try:
+        # Get all unread messages in the chat that are NOT from the reader
+        selector = {
+            "chat_id": {"$eq": chat_id},
+            "read": {"$eq": False},
+            "sender_email": {"$ne": reader_email}
+        }
+        
+        response = service.post_find(db="chat-messages", selector=selector).get_result()
+        messages = response.get("docs", [])
+        
+        # Mark each message as read
+        for message in messages:
+            message["read"] = True
+            service.post_document(db="chat-messages", document=message)
+        
+        return len(messages)
+        
+    except Exception as e:
+        print(f"Error marking messages as read: {e}")
+        return 0

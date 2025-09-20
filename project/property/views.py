@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import json
 
-from project.utils.cloudant_client import find_properties_by_wallet, get_property_by_id, get_all_properties, find_user_by_email, insert_doc, find_app_user_by_aadhaar, update_property
+from project.utils.cloudant_client import find_properties_by_wallet, get_property_by_id, get_all_properties, find_user_by_email, insert_doc, find_app_user_by_aadhaar, update_property, insert_property_for_sale, get_all_properties_for_sale
 
 @csrf_exempt
 def get_user_properties(request):
@@ -54,6 +54,9 @@ def flag_property_for_sale(request):
     Mark a property as listed for sale with a given price.
     Constraints: price must be <= property 'value' (parsed) if available.
     Body: { "property_id": str, "price": number }
+    
+    This now inserts the property into the 'register-for-sale' database
+    which will be used by the marketplace to show available properties.
     """
     if request.method == "POST":
         try:
@@ -69,10 +72,12 @@ def flag_property_for_sale(request):
         except Exception:
             return JsonResponse({"success": False, "message": "price must be a number"}, status=400)
         try:
+            # Get the original property to validate and get details
             prop = get_property_by_id(property_id)
             if not prop:
                 return JsonResponse({"success": False, "message": "Property not found"}, status=404)
-            # Parse max value
+            
+            # Parse max value for validation
             raw_val = prop.get("value") or prop.get("total_area") or prop.get("total area") or prop.get("Total Area")
             max_val = None
             if isinstance(raw_val, (int, float)):
@@ -84,15 +89,39 @@ def flag_property_for_sale(request):
                         max_val = float(digits)
                     except Exception:
                         max_val = None
+            
             # Enforce price cap if we could determine a value
             if max_val is not None and price_num > max_val:
                 return JsonResponse({"success": False, "message": f"Price cannot exceed property value ({max_val})."}, status=400)
-            # Update document
+            
+            # Get wallet address from property
+            wallet_address = prop.get("wallet") or prop.get("wallet_address")
+            
+            # Insert into register-for-sale database
+            from datetime import datetime
+            sale_result = insert_property_for_sale(
+                property_id=property_id,
+                asking_price=price_num,
+                wallet_address=wallet_address
+            )
+            
+            if "error" in sale_result:
+                return JsonResponse({"success": False, "message": f"Failed to register for sale: {sale_result['error']}"}, status=500)
+            
+            # Also update the original property document to mark as listed
             prop["listed_for_sale"] = True
             prop["asking_price"] = price_num
             prop["status"] = "FOR_SALE"
-            saved = update_property(prop)
-            return JsonResponse({"success": True, "property": saved})
+            update_property(prop)
+            
+            return JsonResponse({
+                "success": True, 
+                "message": "Property successfully listed for sale",
+                "property_id": property_id,
+                "asking_price": price_num,
+                "sale_record": sale_result
+            })
+            
         except Exception as e:
             print(f"Error flagging property for sale: {e}")
             return JsonResponse({"success": False, "message": "Error flagging property"}, status=500)
@@ -101,19 +130,45 @@ def flag_property_for_sale(request):
 def get_marketplace_properties(request):
     """
     Get all properties for marketplace view (public listing)
+    Fetches from register-for-sale database and enriches with property details
     """
     if request.method == "GET":
         try:
-            all_properties = get_all_properties()
+            # Get all properties listed for sale from register-for-sale database
+            sale_listings = get_all_properties_for_sale()
             
-            # Filter properties that are available for sale/transfer
+            # Enrich each sale listing with full property details
             marketplace_properties = []
-            for row in all_properties:
-                if 'doc' in row:
-                    property_doc = row['doc']
-                    # Only show properties that are listed for sale
-                    if property_doc.get('status') == 'FOR_SALE' or property_doc.get('listed_for_sale') == True:
-                        marketplace_properties.append(property_doc)
+            for sale_listing in sale_listings:
+                property_id = sale_listing.get("property_id")
+                if property_id:
+                    # Get full property details from property-details database
+                    property_details = get_property_by_id(property_id)
+                    if property_details:
+                        # Combine sale info with property details
+                        enriched_property = {
+                            **property_details,  # All original property data
+                            "asking_price": sale_listing.get("asking_price"),
+                            "listed_date": sale_listing.get("listed_date"),
+                            "sale_status": sale_listing.get("status", "active"),
+                            "listed_for_sale": True,
+                            "status": "FOR_SALE"
+                        }
+                        marketplace_properties.append(enriched_property)
+                    else:
+                        print(f"Warning: Property details not found for property_id: {property_id}")
+                        # Still include basic sale info even if details missing
+                        marketplace_properties.append({
+                            "property_id": property_id,
+                            "asking_price": sale_listing.get("asking_price"),
+                            "listed_date": sale_listing.get("listed_date"),
+                            "sale_status": sale_listing.get("status", "active"),
+                            "listed_for_sale": True,
+                            "status": "FOR_SALE",
+                            "title": f"Property {property_id}",
+                            "location": "Details unavailable",
+                            "type": "Unknown"
+                        })
             
             return JsonResponse({
                 "success": True,
