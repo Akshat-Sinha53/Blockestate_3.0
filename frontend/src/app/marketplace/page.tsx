@@ -12,7 +12,7 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Search } from "lucide-react";
 import { apiClient } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
+// import { useAuth } from "@/contexts/AuthContext";
 import type { MarketplaceProperty } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
@@ -23,6 +23,10 @@ export default function MarketplacePage() {
   const [listings, setListings] = useState<MarketplaceProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [myWallet, setMyWallet] = useState<string | null>(null);
+  // Local auth snapshot (avoid hard dependency on AuthProvider for this page)
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchMarketplaceProperties() {
@@ -45,6 +49,30 @@ export default function MarketplacePage() {
     fetchMarketplaceProperties();
   }, []);
 
+  // Snapshot auth state from localStorage
+  useEffect(() => {
+    try {
+      const auth = localStorage.getItem('isAuthenticated');
+      const email = localStorage.getItem('userEmail');
+      setIsAuthenticated(auth === 'true' && !!email);
+      setUserEmail(email);
+    } catch {}
+  }, []);
+
+  // Load current user's wallet once authenticated, to identify own listings
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        if (!isAuthenticated || !userEmail) return;
+        const prof = await apiClient.getUserProfile(userEmail);
+        setMyWallet(prof.user?.wallet_address || null);
+      } catch (e) {
+        setMyWallet(null);
+      }
+    }
+    loadProfile();
+  }, [isAuthenticated, userEmail]);
+
   const filtered = useMemo(() => {
     return listings.filter((l) => {
       // Build location string from property data
@@ -59,7 +87,6 @@ export default function MarketplacePage() {
     });
   }, [listings, location, type, budget]);
 
-  const { isAuthenticated, userEmail } = useAuth();
   const router = useRouter();
 
   async function handleChat(propertyId: string) {
@@ -158,6 +185,8 @@ export default function MarketplacePage() {
             const propertyTitle = l.title || l.name || l.plot_number || `Property ${propertyId}`;
             const askingPrice = l.asking_price || 0;
             const status = l.sale_status || l.status || "For Sale";
+            const ownerWallet = (l as any).wallet || (l as any).wallet_address || null;
+            const isOwner = !!(myWallet && ownerWallet && String(myWallet).toLowerCase() === String(ownerWallet).toLowerCase());
             
             return (
               <Card key={propertyId} className="group border-border/60 bg-card/60 backdrop-blur overflow-hidden">
@@ -173,9 +202,14 @@ export default function MarketplacePage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{propertyTitle}</CardTitle>
-                    <Badge variant={status === "active" ? "default" : "secondary"}>
-                      {status === "active" ? "For Sale" : status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={status === "active" ? "default" : "secondary"}>
+                        {status === "active" ? "For Sale" : status}
+                      </Badge>
+                      {isOwner && (
+                        <Badge variant="secondary">Your Listing</Badge>
+                      )}
+                    </div>
                   </div>
                   <CardDescription>{propertyLocation} • {propertyType}</CardDescription>
                 </CardHeader>
@@ -188,7 +222,7 @@ export default function MarketplacePage() {
                     <Button asChild size="sm" variant="secondary">
                       <Link href={`/properties/${propertyId}`}>Details</Link>
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleChat(propertyId)} className="gap-1">
+                    <Button size="sm" variant="outline" onClick={() => handleChat(propertyId)} className="gap-1" disabled={isOwner} title={isOwner ? 'You cannot chat with your own listing' : undefined}>
                       <MessageCircle className="h-4 w-4"/>Chat
                     </Button>
                   </div>
