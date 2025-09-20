@@ -1,0 +1,15 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800' viewBox='0 0 1200 800'>
+  <defs>
+    <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0%' stop-color='#8ec5ff'/>
+      <stop offset='100%' stop-color='#3b82f6'/>
+    </linearGradient>
+  </defs>
+  <rect width='1200' height='800' fill='url(#g)'/>
+  <g fill='rgba(255,255,255,0.35)'>
+    <circle cx='200' cy='200' r='120'/>
+    <rect x='700' y='150' width='360' height='240' rx='16'/>
+    <polygon points='300,700 500,500 700,700'/>
+  </g>
+  <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='sans-serif' font-size='56' font-weight='700'>Neo Heights • Mumbai</text>
+</svg>
