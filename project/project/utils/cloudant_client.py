@@ -444,7 +444,7 @@ def mark_messages_as_read(chat_id, reader_email):
     try:
         # Get all unread messages in the chat that are NOT from the reader
         selector = {
-            "chat_id": {"$eq": chat_id},
+            "chat_id": {"$": "eq", "eq": chat_id} if False else {"$eq": chat_id},
             "read": {"$eq": False},
             "sender_email": {"$ne": reader_email}
         }
@@ -462,3 +462,95 @@ def mark_messages_as_read(chat_id, reader_email):
     except Exception as e:
         print(f"Error marking messages as read: {e}")
         return 0
+
+# ----------------------- Transaction helpers -----------------------
+
+def get_wallet_from_user_doc(user_doc):
+    return (
+        user_doc.get("wallet_adrdess")
+        or user_doc.get("wallet")
+        or user_doc.get("Wallet")
+        or user_doc.get("wallet_address")
+        or user_doc.get("walletAddress")
+    )
+
+def get_prop_docs(property_id):
+    """
+    Retrieve property documents metadata from 'prop-docs' database by property_id.
+    Expected fields: { "property_id": str, "gdrive_link": str }
+    """
+    try:
+        resp = service.post_find(db="prop-docs", selector={"property_id": {"$eq": property_id}}).get_result()
+        docs = resp.get("docs", [])
+        return docs[0] if docs else None
+    except Exception as e:
+        print(f"Error fetching prop-docs for {property_id}: {e}")
+        return None
+
+
+def assign_random_surveyor():
+    """
+    Pick a surveyor from govt-citizen where role != 'USER'.
+    Returns a minimal dict with email and name if available.
+    """
+    try:
+        selector = {"role": {"$ne": "USER"}}
+        resp = service.post_find(db="govt-citizen", selector=selector).get_result()
+        docs = resp.get("docs", [])
+        if not docs:
+            return None
+        d = docs[0]
+        return {
+            "email": d.get("Email") or d.get("email"),
+            "name": d.get("Name") or d.get("name"),
+            "raw": d,
+        }
+    except Exception as e:
+        print(f"Error assigning surveyor: {e}")
+        return None
+
+
+def create_transaction_doc(property_id, seller_email, buyer_email, status, seller_wallet=None, buyer_wallet=None, docs_link=None, surveyor_email=None):
+    from datetime import datetime
+    tx = {
+        "property_id": property_id,
+        "seller_email": seller_email,
+        "buyer_email": buyer_email,
+        "seller_wallet": seller_wallet,
+        "buyer_wallet": buyer_wallet,
+        "status": status,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "surveyor_email": surveyor_email,
+        "docs_link": docs_link,
+        "officer_details": None,
+    }
+    try:
+        resp = service.post_document(db="in-transaction", document=tx).get_result()
+        tx["_id"] = resp.get("id")
+        tx["_rev"] = resp.get("rev")
+        return tx
+    except Exception as e:
+        print(f"Error creating transaction: {e}")
+        return {"error": str(e)}
+
+
+def get_transaction_by_id(tx_id):
+    try:
+        return service.get_document(db="in-transaction", doc_id=tx_id).get_result()
+    except Exception as e:
+        print(f"Error fetching transaction {tx_id}: {e}")
+        return None
+
+
+def update_transaction_doc(tx_doc):
+    from datetime import datetime
+    tx_doc["updated_at"] = datetime.now().isoformat()
+    try:
+        resp = service.post_document(db="in-transaction", document=tx_doc).get_result()
+        tx_doc["_rev"] = resp.get("rev")
+        return tx_doc
+    except Exception as e:
+        print(f"Error updating transaction: {e}")
+        return {"error": str(e)}
+
