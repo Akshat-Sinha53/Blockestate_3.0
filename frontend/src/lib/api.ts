@@ -132,6 +132,13 @@ export class ApiClient {
     });
   }
 
+  async requestBuyerOtp(transaction_id: string, buyer_email: string) {
+    return this.request<TxResponse>('/api/property/transactions/request-buyer-otp/', {
+      method: 'POST',
+      body: JSON.stringify({ transaction_id, buyer_email }),
+    });
+  }
+
   async surveyorApprove(transaction_id: string, surveyor_email: string, report_url?: string) {
     return this.request<TxResponse>('/api/property/transactions/surveyor-approve/', {
       method: 'POST',
@@ -150,6 +157,21 @@ export class ApiClient {
     return this.request<TransactionsListResponse>('/api/property/transactions/list/', {
       method: 'POST',
       body: JSON.stringify({ user_email, role }),
+    });
+  }
+
+  // Surveyor APIs
+  async loginSurveyor(email: string) {
+    return this.request<{ success: boolean; profile?: any; message?: string }>('/api/property/surveyor/login/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async listSurveyorPending(email: string) {
+    return this.request<{ success: boolean; transactions: any[]; count: number; message?: string }>('/api/property/surveyor/pending/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
     });
   }
 }

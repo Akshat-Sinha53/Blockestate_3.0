@@ -15,6 +15,7 @@ from project.utils.cloudant_client import (
     get_prop_docs,
     assign_random_surveyor,
     find_transactions_for_user,
+    find_user_by_aadhaar,
 )
 from project.utils.mailer import send_otp_email, render_otp_html
 
@@ -205,6 +206,63 @@ def verify_seller_otp(request):
 
 
 @csrf_exempt
+def request_buyer_otp(request):
+    """
+    Buyer requests (or resends) their OTP from the transactions page.
+    Body: { transaction_id: str, buyer_email: str }
+    Only allowed when transaction status is PENDING_BUYER_OTP.
+    """
+    if request.method != 'POST':
+        return _error('POST required', 405)
+    body = _require_json(request)
+    if body is None:
+        return _error('Invalid JSON')
+
+    tx_id = body.get('transaction_id')
+    buyer_email = body.get('buyer_email')
+
+    if not tx_id or not buyer_email:
+        return _error('transaction_id and buyer_email are required')
+
+    tx = get_transaction_by_id(tx_id)
+    if not tx:
+        return _error('Transaction not found', 404)
+
+    # Must be pending buyer step
+    if tx.get('status') != 'PENDING_BUYER_OTP':
+        return _error('Buyer verification is not pending for this transaction', 400)
+
+    # Validate buyer identity (case-insensitive)
+    if (tx.get('buyer_email') or '').strip().lower() != _norm_email(buyer_email):
+        return _error('Unauthorized buyer', 403)
+
+    # Generate and store/resend OTP
+    b_otp = str(random.randint(100000, 999999))
+    TX_OTP_BUYER[tx_id] = b_otp
+
+    try:
+        buyer_doc = find_user_by_email(buyer_email)
+        buyer_name = buyer_doc.get('Name') if buyer_doc else None
+        html_b = render_otp_html(buyer_name or buyer_email.split('@')[0], b_otp, title="Buyer OTP")
+    except Exception:
+        html_b = None
+
+    if not send_otp_email(
+        to_email=buyer_email,
+        otp=b_otp,
+        subject=f"Block Estate - Buyer OTP for Property {tx.get('property_id')}",
+        body_prefix="Use this OTP to confirm you are ready to proceed with the property transfer.",
+        html_body=html_b,
+    ):
+        print(f"TX BUYER OTP (requested) for {buyer_email}: {b_otp}")
+
+    return _ok(message='Buyer OTP sent')
+
+
+# MVP override: always assign this Aadhaar as surveyor if available
+SURVEYOR_AADHAAR_OVERRIDE = "568945895487"
+
+@csrf_exempt
 def verify_buyer_otp(request):
     """
     Verify buyer OTP, assign a surveyor, and move to PENDING_SURVEYOR_APPROVAL.
@@ -240,7 +298,22 @@ def verify_buyer_otp(request):
     except Exception:
         pass
 
-    surveyor = assign_random_surveyor()
+    # Assign surveyor per MVP override; fallback to random
+    surveyor = None
+    try:
+        if SURVEYOR_AADHAAR_OVERRIDE:
+            sd = find_user_by_aadhaar(SURVEYOR_AADHAAR_OVERRIDE)
+            if sd:
+                surveyor = {
+                    "email": sd.get("Email") or sd.get("email"),
+                    "name": sd.get("Name") or sd.get("name"),
+                    "raw": sd,
+                }
+    except Exception as _:
+        surveyor = None
+    if not surveyor:
+        surveyor = assign_random_surveyor()
+
     tx['surveyor_email'] = surveyor.get('email') if surveyor else None
     tx['officer_details'] = surveyor
     tx['status'] = 'PENDING_SURVEYOR_APPROVAL'
@@ -362,14 +435,39 @@ def list_transactions(request):
         docs = find_transactions_for_user(user_email, role=role, status=status)
         # Format lightweight response for dashboard
         txs = []
+        seen_pending_buyer_props = set()
         for d in docs:
-            # Determine role for this user
-            role_for_user = 'buyer' if d.get('buyer_email') == user_email else ('seller' if d.get('seller_email') == user_email else None)
+            # Determine role for this user (case-insensitive)
+            try:
+                ul = (user_email or "").strip().lower()
+            except Exception:
+                ul = user_email
+            be = (d.get('buyer_email') or "")
+            se = (d.get('seller_email') or "")
+            try:
+                bel = be.strip().lower() if isinstance(be, str) else be
+            except Exception:
+                bel = be
+            try:
+                sel = se.strip().lower() if isinstance(se, str) else se
+            except Exception:
+                sel = se
+            role_for_user = 'buyer' if bel == ul else ('seller' if sel == ul else None)
+
+            # Counterpart determination (also case-insensitive)
             counterpart = None
-            if d.get('seller_email') and d.get('seller_email') != user_email:
-                counterpart = d.get('seller_email')
-            elif d.get('buyer_email') and d.get('buyer_email') != user_email:
-                counterpart = d.get('buyer_email')
+            if se and sel != ul:
+                counterpart = se
+            elif be and bel != ul:
+                counterpart = be
+
+            # De-duplicate buyer pending approvals per property (keep most recent)
+            if role_for_user == 'buyer' and (d.get('status') or '') == 'PENDING_BUYER_OTP':
+                pid = d.get('property_id')
+                if pid in seen_pending_buyer_props:
+                    continue
+                seen_pending_buyer_props.add(pid)
+
             txs.append({
                 'id': d.get('_id'),
                 'property_id': d.get('property_id'),

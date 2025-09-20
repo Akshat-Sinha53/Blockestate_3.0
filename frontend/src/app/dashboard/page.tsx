@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const [txBusyId, setTxBusyId] = useState<string | null>(null);
   const [txErrorMsg, setTxErrorMsg] = useState<string>("");
   const [txSuccessMsg, setTxSuccessMsg] = useState<string>("");
+  const [txRequested, setTxRequested] = useState<Record<string, boolean>>({});
 
   // Transfer modal state
   const [txOpen, setTxOpen] = useState(false);
@@ -217,27 +218,46 @@ export default function DashboardPage() {
                         <div className="text-xs text-muted-foreground">With: {t.counterpart || '—'} • Updated: {t.updated_at ? new Date(t.updated_at).toLocaleString() : '—'}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Input
-                          placeholder="Enter OTP"
-                          value={txOtps[t.id] || ''}
-                          onChange={(e) => setTxOtps(prev => ({ ...prev, [t.id]: e.target.value }))}
-                          className="w-40"
-                        />
-                        <Button size="sm" disabled={!txOtps[t.id] || txBusyId === t.id} onClick={async () => {
-                          if (!userEmail) return;
-                          setTxBusyId(t.id); setTxErrorMsg(''); setTxSuccessMsg('');
-                          try {
-                            const resp = await apiClient.verifyBuyerOtp(t.id, userEmail, (txOtps[t.id] || '').trim());
-                            if (resp.success) {
-                              setTxSuccessMsg('OTP verified. Transaction updated.');
-                              // refresh list
-                              try { const res = await apiClient.getUserTransactions(userEmail); if (res.success) setTxs(res.transactions || []); } catch {}
-                            } else {
-                              setTxErrorMsg(resp.message || 'Failed to verify OTP');
-                            }
-                          } catch (e: any) { setTxErrorMsg(e?.message || 'Failed to verify OTP'); }
-                          finally { setTxBusyId(null); }
-                        }}>Verify</Button>
+                        {!txRequested[t.id] ? (
+                          <Button size="sm" variant="outline" disabled={txBusyId === t.id} onClick={async () => {
+                            if (!userEmail) return;
+                            setTxBusyId(t.id); setTxErrorMsg(''); setTxSuccessMsg('');
+                            try {
+                              const resp = await apiClient.requestBuyerOtp(t.id, userEmail);
+                              if (resp.success) {
+                                setTxRequested(prev => ({ ...prev, [t.id]: true }));
+                                setTxSuccessMsg('OTP sent to your email. Please check and enter below.');
+                              } else {
+                                setTxErrorMsg(resp.message || 'Failed to send OTP');
+                              }
+                            } catch (e: any) { setTxErrorMsg(e?.message || 'Failed to send OTP'); }
+                            finally { setTxBusyId(null); }
+                          }}>Request OTP</Button>
+                        ) : (
+                          <>
+                            <Input
+                              placeholder="Enter OTP"
+                              value={txOtps[t.id] || ''}
+                              onChange={(e) => setTxOtps(prev => ({ ...prev, [t.id]: e.target.value }))}
+                              className="w-40"
+                            />
+                            <Button size="sm" disabled={!txOtps[t.id] || txBusyId === t.id} onClick={async () => {
+                              if (!userEmail) return;
+                              setTxBusyId(t.id); setTxErrorMsg(''); setTxSuccessMsg('');
+                              try {
+                                const resp = await apiClient.verifyBuyerOtp(t.id, userEmail, (txOtps[t.id] || '').trim());
+                                if (resp.success) {
+                                  setTxSuccessMsg('OTP verified. Transaction updated.');
+                                  // refresh list
+                                  try { const res = await apiClient.getUserTransactions(userEmail); if (res.success) setTxs(res.transactions || []); } catch {}
+                                } else {
+                                  setTxErrorMsg(resp.message || 'Failed to verify OTP');
+                                }
+                              } catch (e: any) { setTxErrorMsg(e?.message || 'Failed to verify OTP'); }
+                              finally { setTxBusyId(null); }
+                            }}>Verify</Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
