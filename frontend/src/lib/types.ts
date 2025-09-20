@@ -168,6 +168,7 @@ export interface TransactionsListItem {
   status: string;
   updated_at?: string;
   counterpart?: string;
+  role_for_user?: 'buyer' | 'seller';
 }
 
 export interface TransactionsListResponse {

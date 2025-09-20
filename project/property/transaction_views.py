@@ -16,10 +16,17 @@ from project.utils.cloudant_client import (
     assign_random_surveyor,
     find_transactions_for_user,
 )
+from project.utils.mailer import send_otp_email, render_otp_html
 
 # Simple OTP stores for transaction flow
 TX_OTP_SELLER = {}
 TX_OTP_BUYER = {}
+
+def _norm_email(val):
+    try:
+        return val.strip().lower() if isinstance(val, str) else val
+    except Exception:
+        return val
 
 
 def _require_json(request):
@@ -103,10 +110,23 @@ def initiate_transfer(request):
     if isinstance(tx, dict) and tx.get('error'):
         return _error(f"Failed to create transaction: {tx['error']}", 500)
 
-    # Generate and store seller OTP
+    # Generate and store seller OTP (case-insensitive key)
     otp = str(random.randint(100000, 999999))
-    TX_OTP_SELLER[seller_email] = otp
-    print(f"TX SELLER OTP for {seller_email}: {otp}")
+    TX_OTP_SELLER[_norm_email(seller_email)] = otp
+    # Email OTP to seller; fallback to console print for dev
+    try:
+        seller_name = seller_doc.get('Name') if isinstance(seller_doc, dict) else None
+        html = render_otp_html(seller_name or seller_email.split('@')[0], otp, title="Seller OTP")
+    except Exception:
+        html = None
+    if not send_otp_email(
+        to_email=seller_email,
+        otp=otp,
+        subject=f"Block Estate - Seller OTP for Property {property_id}",
+        body_prefix="Use this OTP to confirm you are initiating a transfer for the property.",
+        html_body=html,
+    ):
+        print(f"TX SELLER OTP for {seller_email}: {otp}")
 
     return _ok(transaction={"id": tx.get("_id"), "status": tx.get("status")})
 
@@ -131,7 +151,8 @@ def verify_seller_otp(request):
     if not tx_id or not seller_email or not otp:
         return _error('transaction_id, seller_email, otp are required')
 
-    if TX_OTP_SELLER.get(seller_email) != otp:
+    # Accept OTP with case-insensitive email
+    if TX_OTP_SELLER.get(seller_email) != otp and TX_OTP_SELLER.get(_norm_email(seller_email)) != otp:
         return _error('Invalid OTP', 403)
 
     tx = get_transaction_by_id(tx_id)
@@ -145,8 +166,23 @@ def verify_seller_otp(request):
     buyer_email = tx.get('buyer_email')
     if buyer_email:
         b_otp = str(random.randint(100000, 999999))
-        TX_OTP_BUYER[buyer_email] = b_otp
-        print(f"TX BUYER OTP for {buyer_email}: {b_otp}")
+        # Store OTP under normalized key
+        TX_OTP_BUYER[_norm_email(buyer_email)] = b_otp
+        # Email OTP to buyer; fallback to console print for dev
+        try:
+            buyer_doc = find_user_by_email(buyer_email)
+            buyer_name = buyer_doc.get('Name') if buyer_doc else None
+            html_b = render_otp_html(buyer_name or buyer_email.split('@')[0], b_otp, title="Buyer OTP")
+        except Exception:
+            html_b = None
+        if not send_otp_email(
+            to_email=buyer_email,
+            otp=b_otp,
+            subject=f"Block Estate - Buyer OTP for Property {tx.get('property_id')}",
+            body_prefix="Use this OTP to confirm you are the buyer for the property transfer.",
+            html_body=html_b,
+        ):
+            print(f"TX BUYER OTP for {buyer_email}: {b_otp}")
 
     # Now that seller verified, remove the property from sale listings
     try:
@@ -177,12 +213,23 @@ def verify_buyer_otp(request):
     if not tx_id or not buyer_email or not otp:
         return _error('transaction_id, buyer_email, otp are required')
 
-    if TX_OTP_BUYER.get(buyer_email) != otp:
+    # Accept OTP with case-insensitive email key
+    if TX_OTP_BUYER.get(buyer_email) != otp and TX_OTP_BUYER.get(_norm_email(buyer_email)) != otp:
         return _error('Invalid OTP', 403)
 
     tx = get_transaction_by_id(tx_id)
     if not tx:
         return _error('Transaction not found', 404)
+
+    # Clear OTP after successful verification (both key variants)
+    try:
+        if buyer_email in TX_OTP_BUYER:
+            del TX_OTP_BUYER[buyer_email]
+        n = _norm_email(buyer_email)
+        if n in TX_OTP_BUYER:
+            del TX_OTP_BUYER[n]
+    except Exception:
+        pass
 
     surveyor = assign_random_surveyor()
     tx['surveyor_email'] = surveyor.get('email') if surveyor else None
@@ -285,6 +332,8 @@ def list_transactions(request):
         # Format lightweight response for dashboard
         txs = []
         for d in docs:
+            # Determine role for this user
+            role_for_user = 'buyer' if d.get('buyer_email') == user_email else ('seller' if d.get('seller_email') == user_email else None)
             counterpart = None
             if d.get('seller_email') and d.get('seller_email') != user_email:
                 counterpart = d.get('seller_email')
@@ -295,7 +344,8 @@ def list_transactions(request):
                 'property_id': d.get('property_id'),
                 'status': d.get('status'),
                 'updated_at': d.get('updated_at') or d.get('created_at'),
-                'counterpart': counterpart
+                'counterpart': counterpart,
+                'role_for_user': role_for_user,
             })
         return _ok(transactions=txs, count=len(txs))
     except Exception as e:

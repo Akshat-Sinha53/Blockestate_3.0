@@ -30,6 +30,10 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chats, setChats] = useState<ChatWithDetails[]>([]);
   const [txs, setTxs] = useState<TransactionsListItem[]>([]);
+  const [txOtps, setTxOtps] = useState<Record<string, string>>({});
+  const [txBusyId, setTxBusyId] = useState<string | null>(null);
+  const [txErrorMsg, setTxErrorMsg] = useState<string>("");
+  const [txSuccessMsg, setTxSuccessMsg] = useState<string>("");
 
   // Transfer modal state
   const [txOpen, setTxOpen] = useState(false);
@@ -194,7 +198,57 @@ export default function DashboardPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="transactions" className="mt-6">
+        <TabsContent value="transactions" className="mt-6 space-y-4">
+          {/* Pending actions for me (buyer OTP) */}
+          <Card className="border-border/60 bg-card/60 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-base">Pending Actions</CardTitle>
+              <CardDescription>Verify OTP to continue your pending purchases.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {txs.filter(t => t.role_for_user === 'buyer' && t.status === 'PENDING_BUYER_OTP').length === 0 ? (
+                <div className="text-sm text-muted-foreground">No pending actions.</div>
+              ) : (
+                <div className="space-y-3">
+                  {txs.filter(t => t.role_for_user === 'buyer' && t.status === 'PENDING_BUYER_OTP').map((t) => (
+                    <div key={t.id} className="flex flex-col sm:flex-row sm:items-end gap-2 p-3 rounded-lg border">
+                      <div className="flex-1 text-sm">
+                        <div className="font-medium">Property {t.property_id}</div>
+                        <div className="text-xs text-muted-foreground">With: {t.counterpart || '—'} • Updated: {t.updated_at ? new Date(t.updated_at).toLocaleString() : '—'}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Enter OTP"
+                          value={txOtps[t.id] || ''}
+                          onChange={(e) => setTxOtps(prev => ({ ...prev, [t.id]: e.target.value }))}
+                          className="w-40"
+                        />
+                        <Button size="sm" disabled={!txOtps[t.id] || txBusyId === t.id} onClick={async () => {
+                          if (!userEmail) return;
+                          setTxBusyId(t.id); setTxErrorMsg(''); setTxSuccessMsg('');
+                          try {
+                            const resp = await apiClient.verifyBuyerOtp(t.id, userEmail, (txOtps[t.id] || '').trim());
+                            if (resp.success) {
+                              setTxSuccessMsg('OTP verified. Transaction updated.');
+                              // refresh list
+                              try { const res = await apiClient.getUserTransactions(userEmail); if (res.success) setTxs(res.transactions || []); } catch {}
+                            } else {
+                              setTxErrorMsg(resp.message || 'Failed to verify OTP');
+                            }
+                          } catch (e: any) { setTxErrorMsg(e?.message || 'Failed to verify OTP'); }
+                          finally { setTxBusyId(null); }
+                        }}>Verify</Button>
+                      </div>
+                    </div>
+                  ))}
+                  {txErrorMsg && <div className="text-sm text-red-500">{txErrorMsg}</div>}
+                  {txSuccessMsg && <div className="text-sm text-green-600">{txSuccessMsg}</div>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* All transactions */}
           <div className="grid gap-4 sm:grid-cols-2">
             {txs.length === 0 ? (
               <div className="text-sm text-muted-foreground">No transactions yet.</div>

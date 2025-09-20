@@ -3,6 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 import json, random
 
 from project.utils.cloudant_client import find_user_by_aadhaar, find_user_by_pan
+from project.utils.mailer import send_otp_email
 
 
 from django.shortcuts import render
@@ -39,10 +40,23 @@ def verify_aadhaar_pan(request):
         otp = str(random.randint(100000, 999999))
         OTP_STORE[email] = otp
 
-        # Dev ke liye console pe OTP print
-        print(f"DEBUG OTP for {email}: {otp}")
+        # Try to send OTP via email; if it fails, still print to console for dev
+        try:
+            from project.utils.mailer import render_otp_html
+            user_name = user.get("Name") or email.split('@')[0]
+            html = render_otp_html(user_name, otp, title="Your Login OTP")
+        except Exception:
+            html = None
+        sent = send_otp_email(
+            to_email=email,
+            otp=otp,
+            subject="Block Estate - Your Login OTP",
+            body_prefix="Use this OTP to complete your login/verification on BlockEstate.",
+            html_body=html,
+        )
+        if not sent:
+            print(f"DEBUG OTP for {email}: {otp}")
 
-        # TODO: email bhejna baaki hai
         return JsonResponse ({"success": True, "message": "OTP sent", "email": email})
 
 

@@ -149,7 +149,8 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = config('GMAIL_USER', default='')
 EMAIL_HOST_PASSWORD = config('GMAIL_APP_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = f'Block Estate <{config("GMAIL_USER", default="noreply@blockestate.com")}>'
+DEFAULT_FROM_EMAIL = f'Block Estate <{config("GMAIL_USER", default="bmksinha81@gmail.com")}>'
+EMAIL_TIMEOUT = 15  # seconds, to avoid long hangs if SMTP is unreachable
 
 # For development, you can also use console backend to test without actual email
 # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
