@@ -55,8 +55,14 @@ def initiate_chat(request):
                         "message": "Property not found"
                     }, status=404)
                 
-                # Get the property wallet and find the user's email
-                wallet_address = property_data.get("wallet") or property_data.get("wallet_address")
+                # Get the property wallet and find the user's email (support multiple schema variants)
+                wallet_address = (
+                    property_data.get("wallet")
+                    or property_data.get("wallet_address")
+                    or property_data.get("wallet_adrdess")  # observed variant
+                    or property_data.get("Wallet")
+                    or property_data.get("walletAddress")
+                )
                 if not wallet_address:
                     return JsonResponse({
                         "success": False, 
