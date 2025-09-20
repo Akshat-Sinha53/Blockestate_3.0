@@ -110,9 +110,9 @@ def initiate_transfer(request):
     if isinstance(tx, dict) and tx.get('error'):
         return _error(f"Failed to create transaction: {tx['error']}", 500)
 
-    # Generate and store seller OTP (case-insensitive key)
+    # Generate and store seller OTP keyed by transaction (robust when multiple txs exist)
     otp = str(random.randint(100000, 999999))
-    TX_OTP_SELLER[_norm_email(seller_email)] = otp
+    TX_OTP_SELLER[tx.get('_id')] = otp
     # Email OTP to seller; fallback to console print for dev
     try:
         seller_name = seller_doc.get('Name') if isinstance(seller_doc, dict) else None
@@ -152,12 +152,22 @@ def verify_seller_otp(request):
         return _error('transaction_id, seller_email, otp are required')
 
     # Accept OTP with case-insensitive email
-    if TX_OTP_SELLER.get(seller_email) != otp and TX_OTP_SELLER.get(_norm_email(seller_email)) != otp:
-        return _error('Invalid OTP', 403)
-
     tx = get_transaction_by_id(tx_id)
     if not tx:
         return _error('Transaction not found', 404)
+
+    # Validate seller identity and OTP keyed by transaction id
+    if (tx.get('seller_email') or '').strip().lower() != _norm_email(seller_email):
+        return _error('Unauthorized seller', 403)
+    if TX_OTP_SELLER.get(tx_id) != otp:
+        return _error('Invalid OTP', 403)
+
+    # Clear seller OTP after success
+    try:
+        if tx_id in TX_OTP_SELLER:
+            del TX_OTP_SELLER[tx_id]
+    except Exception:
+        pass
 
     tx['status'] = 'PENDING_BUYER_OTP'
     update_transaction_doc(tx)
@@ -166,8 +176,8 @@ def verify_seller_otp(request):
     buyer_email = tx.get('buyer_email')
     if buyer_email:
         b_otp = str(random.randint(100000, 999999))
-        # Store OTP under normalized key
-        TX_OTP_BUYER[_norm_email(buyer_email)] = b_otp
+        # Store OTP keyed by transaction id
+        TX_OTP_BUYER[tx_id] = b_otp
         # Email OTP to buyer; fallback to console print for dev
         try:
             buyer_doc = find_user_by_email(buyer_email)
@@ -213,21 +223,20 @@ def verify_buyer_otp(request):
     if not tx_id or not buyer_email or not otp:
         return _error('transaction_id, buyer_email, otp are required')
 
-    # Accept OTP with case-insensitive email key
-    if TX_OTP_BUYER.get(buyer_email) != otp and TX_OTP_BUYER.get(_norm_email(buyer_email)) != otp:
-        return _error('Invalid OTP', 403)
-
     tx = get_transaction_by_id(tx_id)
     if not tx:
         return _error('Transaction not found', 404)
 
-    # Clear OTP after successful verification (both key variants)
+    # Validate buyer identity and OTP keyed by tx
+    if (tx.get('buyer_email') or '').strip().lower() != _norm_email(buyer_email):
+        return _error('Unauthorized buyer', 403)
+    if TX_OTP_BUYER.get(tx_id) != otp:
+        return _error('Invalid OTP', 403)
+
+    # Clear OTP after successful verification
     try:
-        if buyer_email in TX_OTP_BUYER:
-            del TX_OTP_BUYER[buyer_email]
-        n = _norm_email(buyer_email)
-        if n in TX_OTP_BUYER:
-            del TX_OTP_BUYER[n]
+        if tx_id in TX_OTP_BUYER:
+            del TX_OTP_BUYER[tx_id]
     except Exception:
         pass
 
@@ -273,6 +282,28 @@ def surveyor_approve(request):
     update_transaction_doc(tx)
 
     return _ok(transaction={"id": tx.get("_id"), "status": tx.get("status")})
+
+
+@csrf_exempt
+def get_transaction_info(request, tx_id):
+    """
+    Public endpoint to fetch minimal transaction info for the transaction page.
+    GET /api/property/transactions/<tx_id>/info/
+    """
+    if request.method != 'GET':
+        return _error('GET required', 405)
+    tx = get_transaction_by_id(tx_id)
+    if not tx:
+        return _error('Transaction not found', 404)
+    data = {
+        'id': tx.get('_id'),
+        'property_id': tx.get('property_id'),
+        'seller_email': tx.get('seller_email'),
+        'buyer_email': tx.get('buyer_email'),
+        'status': tx.get('status'),
+        'updated_at': tx.get('updated_at') or tx.get('created_at'),
+    }
+    return _ok(transaction=data)
 
 
 @csrf_exempt
