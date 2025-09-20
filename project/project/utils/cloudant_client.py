@@ -125,6 +125,7 @@ def find_user_by_wallet(wallet_address):
     """
     Find a user document by wallet address in 'app-users'.
     Handles schema variants: 'wallet_adrdess', 'wallet', 'Wallet', 'wallet_address', 'walletAddress'.
+    Tries both the provided value and its lowercase form, to be resilient to case differences.
     Returns the first matching document or None.
     """
     if not wallet_address:
@@ -137,15 +138,23 @@ def find_user_by_wallet(wallet_address):
         "wallet_address",
         "walletAddress",
     ]
+    candidates = [wallet_address]
+    try:
+        wl = str(wallet_address)
+        if wl.lower() != wl:
+            candidates.append(wl.lower())
+    except Exception:
+        pass
     for field in field_variants:
-        try:
-            selector = {field: {"$eq": wallet_address}}
-            resp = service.post_find(db="app-users", selector=selector).get_result()
-            docs = resp.get("docs", [])
-            if docs:
-                return docs[0]
-        except Exception as e:
-            print(f"find_user_by_wallet error for field {field}: {e}")
+        for val in candidates:
+            try:
+                selector = {field: {"$eq": val}}
+                resp = service.post_find(db="app-users", selector=selector).get_result()
+                docs = resp.get("docs", [])
+                if docs:
+                    return docs[0]
+            except Exception as e:
+                print(f"find_user_by_wallet error for field {field} value {val}: {e}")
     return None
 
 # Property management functions
@@ -267,16 +276,25 @@ def remove_property_from_sale(property_id):
 
 def get_property_sale_details(property_id):
     """
-    Get sale details for a specific property from register-for-sale database.
+    Get sale details for a specific property from registered_for_sale database.
     """
     try:
         selector = {
             "property_id": {"$eq": property_id},
             "status": {"$eq": "active"}
         }
-        response = service.post_find(db="register-for-sale", selector=selector).get_result()
-        docs = response.get("docs", [])
-        return docs[0] if docs else None
+        # Primary: registered_for_sale (consistent with insertion)
+        try:
+            response = service.post_find(db="registered_for_sale", selector=selector).get_result()
+            docs = response.get("docs", [])
+            if docs:
+                return docs[0]
+        except Exception as e1:
+            print(f"get_property_sale_details primary query error: {e1}")
+        # Fallback: legacy register-for-sale
+        response2 = service.post_find(db="register-for-sale", selector=selector).get_result()
+        docs2 = response2.get("docs", [])
+        return docs2[0] if docs2 else None
     except Exception as e:
         print(f"Error fetching property sale details: {e}")
         return None

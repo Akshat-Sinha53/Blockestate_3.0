@@ -88,6 +88,11 @@ def initiate_chat(request):
             if seller_email == buyer_email:
                 return JsonResponse({"success": False, "message": "Cannot initiate chat with yourself"}, status=400)
             
+            # DEBUG: log resolution context
+            try:
+                print(f"CHAT_INIT property_id={property_id}, buyer={buyer_email}, seller={seller_email}")
+            except Exception:
+                pass
             # Create or get existing chat
             chat_result = create_or_get_chat(property_id, buyer_email, seller_email)
             
