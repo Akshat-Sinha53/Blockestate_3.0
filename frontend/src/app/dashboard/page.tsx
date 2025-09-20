@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
@@ -30,6 +32,16 @@ export default function DashboardPage() {
   const [error, setError] = useState<string>("");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chats, setChats] = useState<ChatWithDetails[]>([]);
+
+  // Transfer modal state
+  const [txOpen, setTxOpen] = useState(false);
+  const [txPropertyId, setTxPropertyId] = useState<string | null>(null);
+  const [txBuyerEmail, setTxBuyerEmail] = useState<string | null>(null);
+  const [txId, setTxId] = useState<string | null>(null);
+  const [txStatus, setTxStatus] = useState<string | null>(null);
+  const [txSellerOtp, setTxSellerOtp] = useState<string>("");
+  const [txBusy, setTxBusy] = useState(false);
+  const [txError, setTxError] = useState<string>("");
 
   useEffect(() => {
     async function load() {
@@ -140,7 +152,7 @@ export default function DashboardPage() {
                         <CardContent className="flex items-center justify-between">
                           <div className="text-sm text-muted-foreground">Area/Value<br/><span className="text-foreground font-medium">{String(value)}</span></div>
                           <div className="flex gap-2">
-                            <Button asChild size="sm" variant="secondary"><Link href={`/properties/${id}`}>View</Link></Button>
+                    <Button asChild size="sm" variant="secondary"><Link href={`/properties/${id}`}>View</Link></Button>
                             <Button size="sm" variant="outline" onClick={async (e) => {
                               e.stopPropagation();
                               const input = window.prompt('Enter asking price (must be <= value shown):');
@@ -161,6 +173,7 @@ export default function DashboardPage() {
                               }
                             }}>Flag for Sale</Button>
                             <Button asChild size="sm" variant="outline"><Link href={`/chats/${id}`} className="gap-1"><MessageCircle className="h-4 w-4"/>Chat</Link></Button>
+                            <Button size="sm" variant="default" onClick={(e) => { e.stopPropagation(); setTxPropertyId(id); setTxBuyerEmail(null); setTxId(null); setTxStatus(null); setTxSellerOtp(""); setTxError(""); setTxOpen(true); }}>Transfer</Button>
                           </div>
                         </CardContent>
                       </Card>
@@ -282,6 +295,66 @@ export default function DashboardPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Transfer Modal */}
+      <Dialog open={txOpen} onOpenChange={setTxOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer Property</DialogTitle>
+          </DialogHeader>
+          {txError && (<div className="text-sm text-red-500 mb-2">{txError}</div>)}
+          {!txId ? (
+            <div className="space-y-3">
+              <div className="text-sm">Select a buyer who has chatted with you about this property.</div>
+              <Select value={txBuyerEmail ?? undefined} onValueChange={(v) => setTxBuyerEmail(v)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select buyer" /></SelectTrigger>
+                <SelectContent>
+                  {chats
+                    .filter(c => c.property_id === txPropertyId)
+                    .map((c) => (
+                      <SelectItem key={c.chat_id} value={c.other_participant}>{c.other_participant} — {c.property_title}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">Only chats related to this property are listed.</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm">Enter the OTP sent to the seller email to proceed.</div>
+              <Input value={txSellerOtp} onChange={(e) => setTxSellerOtp(e.target.value)} placeholder="Enter seller OTP" />
+              <div className="text-xs text-muted-foreground">After verifying, the buyer will receive an OTP in their email (printed in backend terminal for dev).</div>
+              <div className="text-xs">Transaction ID: {txId} • Status: {txStatus}</div>
+            </div>
+          )}
+          <DialogFooter>
+            {!txId ? (
+              <Button disabled={txBusy || !txPropertyId || !txBuyerEmail || !userEmail} onClick={async () => {
+                setTxBusy(true); setTxError("");
+                try {
+                  const resp = await apiClient.initiateTransfer(txPropertyId!, userEmail!, txBuyerEmail!);
+                  if (resp.success && resp.transaction) {
+                    setTxId(resp.transaction.id);
+                    setTxStatus(resp.transaction.status);
+                  } else { setTxError(resp.message || 'Failed to initiate'); }
+                } catch (e: any) { setTxError(e?.message || 'Failed to initiate'); }
+                finally { setTxBusy(false); }
+              }}>Initiate</Button>
+            ) : (
+              <Button disabled={txBusy || !txSellerOtp || !txId || !userEmail} onClick={async () => {
+                setTxBusy(true); setTxError("");
+                try {
+                  const resp = await apiClient.verifySellerOtp(txId!, userEmail!, txSellerOtp.trim());
+                  if (resp.success && resp.transaction) {
+                    setTxStatus(resp.transaction.status);
+                  } else { setTxError(resp.message || 'Failed to verify OTP'); }
+                } catch (e: any) { setTxError(e?.message || 'Failed to verify OTP'); }
+                finally { setTxBusy(false); }
+              }}>Verify Seller OTP</Button>
+            )}
+            <Button variant="outline" onClick={() => setTxOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

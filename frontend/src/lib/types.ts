@@ -149,3 +149,15 @@ export interface InitiateChatResponse {
   };
   message?: string;
 }
+
+// Transaction flow types
+export interface Transaction {
+  id: string;
+  status: string;
+}
+
+export interface TxResponse {
+  success: boolean;
+  transaction?: Transaction;
+  message?: string;
+}

@@ -109,6 +109,42 @@ export class ApiClient {
       body: JSON.stringify({ user_email }),
     });
   }
+
+  // Transactions
+  async initiateTransfer(property_id: string, seller_email: string, buyer_email: string) {
+    return this.request<TxResponse>('/api/property/transactions/initiate/', {
+      method: 'POST',
+      body: JSON.stringify({ property_id, seller_email, buyer_email }),
+    });
+  }
+
+  async verifySellerOtp(transaction_id: string, seller_email: string, otp: string) {
+    return this.request<TxResponse>('/api/property/transactions/verify-seller-otp/', {
+      method: 'POST',
+      body: JSON.stringify({ transaction_id, seller_email, otp }),
+    });
+  }
+
+  async verifyBuyerOtp(transaction_id: string, buyer_email: string, otp: string) {
+    return this.request<TxResponse>('/api/property/transactions/verify-buyer-otp/', {
+      method: 'POST',
+      body: JSON.stringify({ transaction_id, buyer_email, otp }),
+    });
+  }
+
+  async surveyorApprove(transaction_id: string, surveyor_email: string, report_url?: string) {
+    return this.request<TxResponse>('/api/property/transactions/surveyor-approve/', {
+      method: 'POST',
+      body: JSON.stringify({ transaction_id, surveyor_email, report_url }),
+    });
+  }
+
+  async buyerAgree(transaction_id: string, buyer_email: string, agree: boolean) {
+    return this.request<TxResponse>('/api/property/transactions/buyer-agree/', {
+      method: 'POST',
+      body: JSON.stringify({ transaction_id, buyer_email, agree }),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
