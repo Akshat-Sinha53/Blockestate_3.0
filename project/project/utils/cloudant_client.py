@@ -120,6 +120,34 @@ def find_user_by_email(email):
         print(f"Error searching users by email in 'govt-citizen' db: {e}")
     return None
 
+
+def find_user_by_wallet(wallet_address):
+    """
+    Find a user document by wallet address in 'app-users'.
+    Handles schema variants: 'wallet_adrdess', 'wallet', 'Wallet', 'wallet_address', 'walletAddress'.
+    Returns the first matching document or None.
+    """
+    if not wallet_address:
+        return None
+    # Try each field name variant
+    field_variants = [
+        "wallet_adrdess",
+        "wallet",
+        "Wallet",
+        "wallet_address",
+        "walletAddress",
+    ]
+    for field in field_variants:
+        try:
+            selector = {field: {"$eq": wallet_address}}
+            resp = service.post_find(db="app-users", selector=selector).get_result()
+            docs = resp.get("docs", [])
+            if docs:
+                return docs[0]
+        except Exception as e:
+            print(f"find_user_by_wallet error for field {field}: {e}")
+    return None
+
 # Property management functions
 def find_properties_by_wallet(wallet_address):
     """

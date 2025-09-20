@@ -22,6 +22,7 @@ def initiate_chat(request):
         "buyer_email": "string",
         "seller_email": "string" (optional - will be fetched from property)
     }
+    Enforces: buyer must be a known user (acts as minimal auth gate).
     """
     if request.method == "POST":
         try:
@@ -40,7 +41,12 @@ def initiate_chat(request):
             }, status=400)
         
         try:
-            # If seller email not provided, get it from the property owner
+            # Minimal auth: buyer must exist in known user databases
+            buyer_doc = find_user_by_email(buyer_email)
+            if not buyer_doc:
+                return JsonResponse({"success": False, "message": "Authentication required"}, status=403)
+
+            # If seller email not provided, derive from property owner wallet
             if not seller_email:
                 property_data = get_property_by_id(property_id)
                 if not property_data:
@@ -57,9 +63,24 @@ def initiate_chat(request):
                         "message": "Property owner information not found"
                     }, status=404)
                 
-                # Find the seller by wallet - this is a simplified approach
-                # In a real system, you'd have a more robust way to map wallet to user
-                seller_email = "owner@example.com"  # Placeholder - you'll need to implement proper lookup
+                # Lookup seller by wallet in app-users
+                try:
+                    from project.utils.cloudant_client import find_user_by_wallet
+                    seller_doc = find_user_by_wallet(wallet_address)
+                except Exception as e:
+                    print(f"Error resolving seller by wallet: {e}")
+                    seller_doc = None
+                
+                if not seller_doc:
+                    return JsonResponse({"success": False, "message": "Seller not found for this property"}, status=404)
+
+                seller_email = seller_doc.get("Email") or seller_doc.get("email")
+                if not seller_email:
+                    return JsonResponse({"success": False, "message": "Seller email not available"}, status=404)
+
+            # Prevent self-chat
+            if seller_email == buyer_email:
+                return JsonResponse({"success": False, "message": "Cannot initiate chat with yourself"}, status=400)
             
             # Create or get existing chat
             chat_result = create_or_get_chat(property_id, buyer_email, seller_email)

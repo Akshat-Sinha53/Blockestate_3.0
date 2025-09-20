@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Copy, MessageCircle, PlusCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api";
-import type { PropertyDoc, UserProfile } from "@/lib/types";
+import type { PropertyDoc, UserProfile, ChatWithDetails } from "@/lib/types";
 
 const mockTxs = [
   { id: "0x9f3a...c21b", type: "Stamp Duty", amount: "₹ 1,20,000", status: "Success" },
@@ -29,6 +29,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [chats, setChats] = useState<ChatWithDetails[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -54,6 +55,19 @@ export default function DashboardPage() {
       }
     }
     load();
+  }, [userEmail]);
+
+  useEffect(() => {
+    async function loadChats() {
+      if (!userEmail) return;
+      try {
+        const res = await apiClient.getUserChats(userEmail);
+        if (res.success) setChats(res.chats || []);
+      } catch (e) {
+        // ignore for now
+      }
+    }
+    loadChats();
   }, [userEmail]);
 
   const verifiedCount = useMemo(() => properties.filter(p => (p.status || "").toLowerCase() === "verified").length, [properties]);
@@ -186,22 +200,22 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {properties.map((p) => {
-                  const id = p.property_id || p.propert_id || p._id || "unknown";
-                  const title = p.title || p.name || p.plot_number || `Property ${id}`;
-                  const locationParts = [p.Village, p.District, p.State].filter(Boolean) as string[];
-                  const location = p.location || locationParts.join(", ") || "--";
-                  const type = p.type || p.Category || p.Current_use || "--";
-                  return (
-                    <div key={id} className="flex items-center justify-between rounded-lg border p-3">
+                {(!userEmail) ? (
+                  <div className="text-sm text-muted-foreground">Login to view your chats.</div>
+                ) : chats.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No chats yet.</div>
+                ) : (
+                  chats.map((c) => (
+                    <div key={c.chat_id} className="flex items-center justify-between rounded-lg border p-3">
                       <div>
-                        <div className="font-medium">{title}</div>
-                        <div className="text-xs text-muted-foreground">{location} • {type}</div>
+                        <div className="font-medium">{c.property_title}</div>
+                        <div className="text-xs text-muted-foreground">{c.property_location} • {c.status}</div>
+                        <div className="text-xs text-muted-foreground">With: {c.other_participant}</div>
                       </div>
-                      <Button asChild size="sm" variant="secondary"><Link href={`/chats/${id}`}>Open</Link></Button>
+                      <Button asChild size="sm" variant="secondary"><Link href={`/chats/${c.chat_id}`}>Open</Link></Button>
                     </div>
-                  );
-                })}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>

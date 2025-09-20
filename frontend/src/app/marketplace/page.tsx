@@ -59,6 +59,27 @@ export default function MarketplacePage() {
     });
   }, [listings, location, type, budget]);
 
+  const { isAuthenticated, userEmail } = useAuth();
+  const router = useRouter();
+
+  async function handleChat(propertyId: string) {
+    if (!isAuthenticated || !userEmail) {
+      alert('Please log in to start a chat.');
+      router.push('/');
+      return;
+    }
+    try {
+      const resp = await apiClient.initiateChat(propertyId, userEmail);
+      if (resp.success && resp.chat?.chat_id) {
+        router.push(`/chats/${resp.chat.chat_id}`);
+      } else {
+        alert(resp.message || 'Failed to initiate chat');
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Failed to initiate chat');
+    }
+  }
+
   return (
     <div className="min-h-screen container mx-auto px-6 py-10 space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -167,10 +188,8 @@ export default function MarketplacePage() {
                     <Button asChild size="sm" variant="secondary">
                       <Link href={`/properties/${propertyId}`}>Details</Link>
                     </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/chats/${propertyId}`} className="gap-1">
-                        <MessageCircle className="h-4 w-4"/>Chat
-                      </Link>
+                    <Button size="sm" variant="outline" onClick={() => handleChat(propertyId)} className="gap-1">
+                      <MessageCircle className="h-4 w-4"/>Chat
                     </Button>
                   </div>
                 </CardContent>
