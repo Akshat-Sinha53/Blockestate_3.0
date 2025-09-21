@@ -8,6 +8,7 @@ urlpatterns = [
     path('user-properties/', views.get_user_properties, name='user_properties'),
     path('property/<str:property_id>/', views.get_property_details, name='property_details'),
     path('flag-property-for-sale/', views.flag_property_for_sale, name='flag_property_for_sale'),
+    path('unlist-property/', views.unlist_property, name='unlist_property'),
     path('marketplace/', views.get_marketplace_properties, name='marketplace_properties'),
     path('user-profile/', views.get_user_profile, name='user_profile'),
     path('dev/seed/', views.dev_seed_data, name='dev_seed_data'),

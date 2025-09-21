@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import json
 
-from project.utils.cloudant_client import find_properties_by_wallet, get_property_by_id, get_all_properties, find_user_by_email, insert_doc, find_app_user_by_aadhaar, update_property, insert_property_for_sale, get_all_properties_for_sale
+from project.utils.cloudant_client import find_properties_by_wallet, get_property_by_id, get_all_properties, find_user_by_email, insert_doc, find_app_user_by_aadhaar, update_property, insert_property_for_sale, get_all_properties_for_sale, remove_property_from_sale, unlist_property_from_sale
 
 @csrf_exempt
 def get_user_properties(request):
@@ -179,6 +179,40 @@ def get_marketplace_properties(request):
         except Exception as e:
             print(f"Error fetching marketplace properties: {e}")
             return JsonResponse({"success": False, "message": "Error fetching marketplace properties"})
+
+@csrf_exempt
+def unlist_property(request):
+    """
+    Unlist a property from sale by marking its listing inactive and clearing flags on the property document.
+    Body: { "property_id": str }
+    """
+    if request.method == "POST":
+        try:
+            body = json.loads(request.body.decode('utf-8')) if request.body else {}
+        except Exception:
+            body = {}
+        property_id = body.get("property_id")
+        if not property_id:
+            return JsonResponse({"success": False, "message": "property_id is required"}, status=400)
+        try:
+            # Mark listing inactive in registered_for_sale DB
+            res = unlist_property_from_sale(property_id)
+            if isinstance(res, dict) and res.get("error"):
+                # If not found, still proceed to clear flags on property doc
+                pass
+            # Update original property document flags if exists
+            prop = get_property_by_id(property_id)
+            if prop:
+                prop["listed_for_sale"] = False
+                prop.pop("asking_price", None)
+                # Reset status if it was FOR_SALE
+                if (prop.get("status") or "").upper() == "FOR_SALE":
+                    prop["status"] = "OWNED"
+                update_property(prop)
+            return JsonResponse({"success": True, "message": "Property unlisted successfully"})
+        except Exception as e:
+            print(f"Error unlisting property: {e}")
+            return JsonResponse({"success": False, "message": "Error unlisting property"}, status=500)
 
 @csrf_exempt
 def dev_seed_data(request):

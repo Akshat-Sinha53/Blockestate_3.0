@@ -285,6 +285,7 @@ def get_all_properties_for_sale():
 def remove_property_from_sale(property_id):
     """
     Remove a property from sale by marking it as inactive or deleting the record.
+    Currently used for marking as 'sold' after seller verification.
     """
     try:
         # Find the document first
@@ -301,6 +302,25 @@ def remove_property_from_sale(property_id):
             return {"error": "Property not found in sale listings"}
     except Exception as e:
         print(f"Error removing property from sale: {e}")
+        return {"error": str(e)}
+
+
+def unlist_property_from_sale(property_id):
+    """
+    Unlist a property by marking its registered_for_sale record as 'inactive'.
+    """
+    try:
+        selector = {"property_id": {"$eq": property_id}}
+        response = service.post_find(db="registered_for_sale", selector=selector).get_result()
+        docs = response.get("docs", [])
+        if not docs:
+            return {"error": "Property not found in sale listings"}
+        doc = docs[0]
+        doc["status"] = "inactive"
+        update_response = service.post_document(db="registered_for_sale", document=doc).get_result()
+        return update_response
+    except Exception as e:
+        print(f"Error unlisting property from sale: {e}")
         return {"error": str(e)}
 
 def get_property_sale_details(property_id):

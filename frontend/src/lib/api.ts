@@ -77,6 +77,14 @@ export class ApiClient {
     return this.request<MarketplaceResponse>('/api/property/marketplace/');
   }
 
+  async unlistProperty(property_id: string) {
+    return this.request<{ success: boolean; message?: string }>(`/api/property/unlist-property/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ property_id }),
+    });
+  }
+
   // Chat system methods
   async initiateChat(property_id: string, buyer_email: string, seller_email?: string) {
     return this.request<InitiateChatResponse>('/api/property/chats/initiate/', {

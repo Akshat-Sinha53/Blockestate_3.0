@@ -166,25 +166,43 @@ export default function DashboardPage() {
                           <div className="text-sm text-muted-foreground">Area/Value<br/><span className="text-foreground font-medium">{String(value)}</span></div>
                           <div className="flex gap-2">
                     <Button asChild size="sm" variant="secondary"><Link href={`/properties/${id}`}>View</Link></Button>
-                            <Button size="sm" variant="outline" onClick={async (e) => {
-                              e.stopPropagation();
-                              const input = window.prompt('Enter asking price (must be <= value shown):');
-                              if (!input) return;
-                              const price = parseFloat(input.replace(/[^0-9.]/g, ''));
-                              if (isNaN(price)) { alert('Invalid price'); return; }
-                              const pid = (p as any).property_id || (p as any).propert_id || (p as any)._id;
-                              try {
-                                await apiClient.listPropertyForSale(pid, price);
-                                // Optimistically update UI
-                                setProperties(prev => prev.map(pp => {
-                                  const pid2 = (pp as any).property_id || (pp as any).propert_id || (pp as any)._id;
-                                  if (pid2 === pid) return { ...pp, listed_for_sale: true, asking_price: price, status: 'FOR_SALE' } as any;
-                                  return pp;
-                                }));
-                              } catch (err: any) {
-                                alert('Failed to flag for sale: ' + (err?.message || 'unknown error'));
-                              }
-                            }}>Flag for Sale</Button>
+                            {p.listed_for_sale ? (
+                              <Button size="sm" variant="outline" onClick={async (e) => {
+                                e.stopPropagation();
+                                const pid = (p as any).property_id || (p as any).propert_id || (p as any)._id;
+                                try {
+                                  const res = await apiClient.unlistProperty(pid);
+                                  if (!res.success) throw new Error(res.message || 'Failed to unlist');
+                                  setProperties(prev => prev.map(pp => {
+                                    const pid2 = (pp as any).property_id || (pp as any).propert_id || (pp as any)._id;
+                                    if (pid2 === pid) return { ...pp, listed_for_sale: false, asking_price: undefined, status: 'OWNED' } as any;
+                                    return pp;
+                                  }));
+                                } catch (err: any) {
+                                  alert('Failed to unlist: ' + (err?.message || 'unknown error'));
+                                }
+                              }}>Unlist</Button>
+                            ) : (
+                              <Button size="sm" variant="outline" onClick={async (e) => {
+                                e.stopPropagation();
+                                const input = window.prompt('Enter asking price (must be <= value shown):');
+                                if (!input) return;
+                                const price = parseFloat(input.replace(/[^0-9.]/g, ''));
+                                if (isNaN(price)) { alert('Invalid price'); return; }
+                                const pid = (p as any).property_id || (p as any).propert_id || (p as any)._id;
+                                try {
+                                  await apiClient.listPropertyForSale(pid, price);
+                                  // Optimistically update UI
+                                  setProperties(prev => prev.map(pp => {
+                                    const pid2 = (pp as any).property_id || (pp as any).propert_id || (pp as any)._id;
+                                    if (pid2 === pid) return { ...pp, listed_for_sale: true, asking_price: price, status: 'FOR_SALE' } as any;
+                                    return pp;
+                                  }));
+                                } catch (err: any) {
+                                  alert('Failed to flag for sale: ' + (err?.message || 'unknown error'));
+                                }
+                              }}>Flag for Sale</Button>
+                            )}
                             <Button asChild size="sm" variant="outline"><Link href={`/chats/${id}`} className="gap-1"><MessageCircle className="h-4 w-4"/>Chat</Link></Button>
                             <Button size="sm" variant="default" onClick={(e) => { e.stopPropagation(); setTxPropertyId(id); setTxBuyerEmail(null); setTxId(null); setTxStatus(null); setTxSellerOtp(""); setTxError(""); setTxOpen(true); }}>Transfer</Button>
                           </div>
