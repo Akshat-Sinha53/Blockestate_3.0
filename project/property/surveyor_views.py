@@ -102,7 +102,6 @@ def list_pending_for_surveyor(request):
         # Fetch transactions
         docs = _select("in_transaction", {
             "status": "eq.PENDING_SURVEYOR_APPROVAL",
-            "surveyor_email": f"eq.{el}",
             "order": "updated_at.desc"
         })
         

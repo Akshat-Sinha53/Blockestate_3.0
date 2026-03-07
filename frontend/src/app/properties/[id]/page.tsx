@@ -1,5 +1,7 @@
 "use client"
 
+import { motion } from "framer-motion";
+
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,11 +67,40 @@ export default function PropertyDetailsPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground">Loading...</div>
+        <div className="space-y-6">
+          <Card className="animate-pulse border-border/60 bg-card/60 backdrop-blur overflow-hidden">
+            <div className="relative aspect-[16/9] w-full bg-muted/60"></div>
+          </Card>
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="animate-pulse border-border/60 bg-card/60 backdrop-blur lg:col-span-2">
+              <CardHeader className="space-y-3">
+                <div className="h-6 bg-muted/60 rounded w-1/3"></div>
+                <div className="h-4 bg-muted/60 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-24 bg-muted/50 rounded w-full"></div>
+              </CardContent>
+            </Card>
+            <Card className="animate-pulse border-border/60 bg-card/60 backdrop-blur">
+              <CardHeader className="space-y-3">
+                <div className="h-6 bg-muted/60 rounded w-1/3"></div>
+                <div className="h-4 bg-muted/60 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-32 bg-muted/50 rounded w-full"></div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       ) : error ? (
         <div className="text-sm text-red-500">{error}</div>
       ) : (
-        <>
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="space-y-6"
+        >
           {/* Banner */}
           <Card className="overflow-hidden border-border/60 bg-card/60 backdrop-blur">
             <div className="relative aspect-[16/9] w-full">
@@ -174,7 +205,7 @@ export default function PropertyDetailsPage() {
               </CardContent>
             </Card>
           </div>
-        </>
+        </motion.div>
       )}
     </div>
   );

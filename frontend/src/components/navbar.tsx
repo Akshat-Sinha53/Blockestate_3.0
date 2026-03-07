@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Building } from "lucide-react";
 
 export const Navbar = () => {
   const { isAuthenticated, userEmail, logout } = useAuth();
@@ -10,7 +11,9 @@ export const Navbar = () => {
     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-6 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-md bg-gradient-to-br from-chart-2 to-chart-3 ring-1 ring-border" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/20 ring-1 ring-primary/50 text-primary">
+            <Building className="h-5 w-5 fill-primary/30" />
+          </div>
           <span className="text-sm font-semibold tracking-tight">Block Estate</span>
         </Link>
         <nav className="hidden sm:flex items-center gap-5 text-sm">

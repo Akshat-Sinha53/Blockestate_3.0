@@ -129,14 +129,13 @@ export interface ChatListResponse {
 
 export interface SendMessageResponse {
   success: boolean;
-  message?: {
+  message?: string | {
     message_id: string;
     chat_id: string;
     sender_email: string;
     message_text: string;
     timestamp: string;
   };
-  message?: string;
 }
 
 export interface InitiateChatResponse {

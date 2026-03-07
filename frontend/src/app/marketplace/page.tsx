@@ -1,5 +1,7 @@
 "use client"
 
+import { motion } from "framer-motion";
+
 import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
 import Image from "next/image";
@@ -156,8 +158,19 @@ export default function MarketplacePage() {
       </Card>
 
       {loading ? (
-        <div className="text-center py-12">
-          <div className="text-lg text-muted-foreground">Loading marketplace properties...</div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Card key={i} className="animate-pulse border-border/60 bg-card/60 backdrop-blur overflow-hidden">
+              <div className="relative aspect-[16/9] w-full bg-muted/60" />
+              <CardHeader className="space-y-3">
+                <div className="h-6 bg-muted/60 rounded w-2/3"></div>
+                <div className="h-4 bg-muted/60 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-10 bg-muted/50 rounded w-full mt-4"></div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : error ? (
         <div className="text-center py-12">
@@ -187,10 +200,16 @@ export default function MarketplacePage() {
             const status = l.sale_status || l.status || "For Sale";
             const ownerWallet = (l as any).wallet || (l as any).wallet_address || null;
             const isOwner = !!(myWallet && ownerWallet && String(myWallet).toLowerCase() === String(ownerWallet).toLowerCase());
-            
             return (
-              <Card key={propertyId} className="group border-border/60 bg-card/60 backdrop-blur overflow-hidden">
-                <div className="relative aspect-[16/9] w-full bg-muted">
+              <motion.div
+                key={propertyId}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileHover={{ y: -5 }}
+                transition={{ duration: 0.4 }}
+              >
+                <Card className="group h-full flex flex-col border-border/60 bg-card/60 backdrop-blur overflow-hidden hover:shadow-xl hover:shadow-primary/10 transition-all duration-300">
+                  <div className="relative aspect-[16/9] w-full bg-muted group-hover:scale-105 transition-transform duration-500">
                   {/* Placeholder for property image */}
                   <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                     <div className="text-center">
@@ -227,7 +246,8 @@ export default function MarketplacePage() {
                     </Button>
                   </div>
                 </CardContent>
-              </Card>
+                </Card>
+              </motion.div>
             );
           })}
         </div>

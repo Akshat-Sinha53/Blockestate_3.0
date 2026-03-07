@@ -17,7 +17,7 @@ from project.utils.cloudant_client import (
     find_transactions_for_user,
     find_user_by_aadhaar,
 )
-from project.utils.mailer import send_otp_email, render_otp_html
+from project.utils.mailer import send_otp_email, render_otp_html, send_notification_email
 
 # Simple OTP stores for transaction flow
 TX_OTP_SELLER = {}
@@ -173,27 +173,29 @@ def verify_seller_otp(request):
     tx['status'] = 'PENDING_BUYER_OTP'
     update_transaction_doc(tx)
 
-    # Generate buyer OTP
+    # Notify buyer that transfer was initiated
     buyer_email = tx.get('buyer_email')
     if buyer_email:
-        b_otp = str(random.randint(100000, 999999))
-        # Store OTP keyed by transaction id
-        TX_OTP_BUYER[tx_id] = b_otp
-        # Email OTP to buyer; fallback to console print for dev
         try:
             buyer_doc = find_user_by_email(buyer_email)
-            buyer_name = buyer_doc.get('Name') if buyer_doc else None
-            html_b = render_otp_html(buyer_name or buyer_email.split('@')[0], b_otp, title="Buyer OTP")
-        except Exception:
-            html_b = None
-        if not send_otp_email(
-            to_email=buyer_email,
-            otp=b_otp,
-            subject=f"Block Estate - Buyer OTP for Property {tx.get('property_id')}",
-            body_prefix="Use this OTP to confirm you are the buyer for the property transfer.",
-            html_body=html_b,
-        ):
-            print(f"TX BUYER OTP for {buyer_email}: {b_otp}")
+            buyer_name = buyer_doc.get('Name') if buyer_doc else buyer_email.split('@')[0]
+            prop_id = tx.get('property_id')
+            html_b = f"""
+            <h2>Hello {buyer_name},</h2>
+            <p>The seller has initiated a property transfer with you for Property ID: <strong>{prop_id}</strong>.</p>
+            <p>Please log in to your Block Estate dashboard to review the transaction and verify your OTP when you are ready to proceed with the purchase.</p>
+            <br/>
+            <p>Best regards,<br/>The Block Estate Team</p>
+            """
+            
+            send_notification_email(
+                to_email=buyer_email,
+                subject=f"Block Estate - Property Transfer Initiated ({prop_id})",
+                body=f"Hello {buyer_name},\n\nThe seller has initiated a transfer for property {prop_id}. Please verify it from your Dashboard.",
+                html_body=html_b
+            )
+        except Exception as e:
+            print(f"Failed to send buyer notification: {e}")
 
     # Now that seller verified, remove the property from sale listings
     try:

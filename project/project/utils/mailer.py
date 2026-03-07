@@ -107,3 +107,29 @@ def send_otp_email(to_email: str, otp: str, subject: str = "Your BlockEstate OTP
         return True
     except Exception:
         return False
+
+def send_notification_email(to_email: str, subject: str, body: str, html_body: str | None = None, async_send: bool = True) -> bool:
+    if not to_email:
+        return False
+
+    def _send():
+        try:
+            from_email = getattr(settings, 'EMAIL_HOST_USER', None) or getattr(settings, 'DEFAULT_FROM_EMAIL', None)
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=from_email,
+                recipient_list=[to_email],
+                fail_silently=False,
+                html_message=html_body,
+            )
+        except Exception as e:
+            print(f"send_notification_email failed for {to_email}: {e}")
+
+    if async_send:
+        t = threading.Thread(target=_send, daemon=True)
+        t.start()
+        return True
+    
+    _send()
+    return True

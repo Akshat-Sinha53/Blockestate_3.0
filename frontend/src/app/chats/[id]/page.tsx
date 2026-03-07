@@ -69,7 +69,7 @@ export default function ChatPage() {
     try {
       const response = await apiClient.sendMessage(chatId, userEmail, newMessage.trim());
       
-      if (response.success && response.message) {
+      if (response.success && typeof response.message === 'object') {
         // Add the new message to the local state
         const newMsg: ChatMessage = {
           message_id: response.message.message_id,
@@ -81,7 +81,7 @@ export default function ChatPage() {
         setMessages(prev => [...prev, newMsg]);
         setNewMessage("");
       } else {
-        setError(response.message || "Failed to send message");
+        setError(typeof response.message === 'string' ? response.message : "Failed to send message");
       }
     } catch (err: any) {
       console.error("Error sending message:", err);
@@ -128,9 +128,15 @@ export default function ChatPage() {
     };
   }, []);
 
+  const formatName = (email: string) => {
+    if (!email || !email.includes('@')) return email || 'User';
+    return email.split('@')[0].replace(/[^a-zA-Z]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
+
   const getOtherParticipant = () => {
     if (!chat || !userEmail) return "Other User";
-    return chat.participants.find(p => p !== userEmail) || "Other User";
+    const email = chat.participants.find(p => p !== userEmail) || "Other User";
+    return formatName(email);
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -212,7 +218,8 @@ export default function ChatPage() {
               ) : (
                 messages.map((message) => {
                   const isCurrentUser = message.sender_email === userEmail;
-                  const senderInitials = message.sender_email.substring(0, 2).toUpperCase();
+                  const senderName = isCurrentUser ? "You" : formatName(message.sender_email);
+                  const senderInitials = senderName.substring(0, 2).toUpperCase();
                   
                   return (
                     <div 
@@ -229,8 +236,8 @@ export default function ChatPage() {
                           isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted"
                         }`}
                       >
-                        <div className="text-[11px] opacity-70 mb-0.5 flex justify-between items-center">
-                          <span>{isCurrentUser ? "You" : message.sender_email}</span>
+                        <div className="text-[11px] opacity-70 mb-0.5 flex justify-between items-center gap-3">
+                          <span className="font-semibold">{senderName}</span>
                           <span>{formatTimestamp(message.timestamp)}</span>
                         </div>
                         <div className="whitespace-pre-wrap">{message.message_text}</div>

@@ -5,6 +5,7 @@ import ErrorReporter from "@/components/ErrorReporter";
 import Script from "next/script";
 import { Navbar } from "@/components/navbar";
 import { AuthProvider } from "@/contexts/AuthContext";
+import BackgroundAnimation from "@/components/BackgroundAnimation";
 
 export const metadata: Metadata = {
   title: "Block Estate — Web3 Land dApp",
@@ -31,6 +32,7 @@ export default function RootLayout({
             data-debug="true"
             data-custom-data='{"appName": "YourApp", "version": "1.0.0", "greeting": "hi"}'
           />
+          <BackgroundAnimation />
           <Navbar />
           {children}
           <VisualEditsMessenger />

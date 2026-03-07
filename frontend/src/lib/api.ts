@@ -1,4 +1,4 @@
-import { VerifyResponse, OtpResponse, UserProfileResponse, UserPropertiesResponse, MarketplaceResponse, ChatResponse, ChatListResponse, SendMessageResponse, InitiateChatResponse } from './types';
+import { VerifyResponse, OtpResponse, UserProfileResponse, UserPropertiesResponse, MarketplaceResponse, ChatResponse, ChatListResponse, SendMessageResponse, InitiateChatResponse, TxResponse, TransactionsListResponse } from './types';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -159,6 +159,10 @@ export class ApiClient {
       method: 'POST',
       body: JSON.stringify({ transaction_id, buyer_email, agree }),
     });
+  }
+
+  async getTransactionInfo(transaction_id: string) {
+    return this.request<{ success: boolean; transaction: any; message?: string }>(`/api/property/transactions/${encodeURIComponent(transaction_id)}/info/`);
   }
 
   async getUserTransactions(user_email: string, role?: 'buyer' | 'seller') {

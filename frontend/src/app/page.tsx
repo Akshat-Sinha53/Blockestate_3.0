@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, KeyRound, LogIn, Shield, Wallet } from "lucide-react";
+import { Copy, KeyRound, LogIn, Shield, Wallet, Building } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
@@ -26,7 +26,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [userEmail, setUserEmail] = useState("");
   
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const router = useRouter();
 
   const masked = (val: string) => (val ? val.replace(/\d(?=\d{4})/g, "*") : "");
@@ -106,7 +106,9 @@ export default function Home() {
       <main className="relative z-10 container mx-auto px-6 py-16">
         <div className="flex items-center justify-between gap-6 mb-12">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-chart-2 to-chart-3 ring-1 ring-border" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20 ring-1 ring-primary/50 text-primary">
+              <Building className="h-6 w-6 fill-primary/30" />
+            </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Block Estate</h1>
               <p className="text-sm text-muted-foreground">Institutional-grade, transparent, tamper-proof.</p>
@@ -137,93 +139,101 @@ export default function Home() {
               <h2 className="text-3xl md:text-4xl font-bold tracking-tight">A trusted platform for digital land ownership</h2>
               <p className="text-muted-foreground text-base md:text-lg">Seamless property registry, verification, and settlement—built with Web3 security and a bank-grade experience.</p>
               <div className="flex flex-wrap gap-3 pt-2">
-                {/* User Login Dialog */}
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button size="lg" className="gap-2">Use as User</Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>User Login - Aadhaar</DialogTitle>
-                      <DialogDescription>Authenticate using your Aadhaar number and OTP.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      <Label htmlFor="aadhaar">Aadhaar Number</Label>
-                      <Input id="aadhaar" placeholder="xxxx-xxxx-xxxx" value={aadhaar} onChange={(e) => setAadhaar(e.target.value)} />
-                      {!otpSent ? (
-                        <div>
-                          <Button 
-                            onClick={handleSendOtp} 
-                            disabled={!aadhaar || aadhaar.length < 12 || loading}
-                          >
-                            {loading ? "Sending..." : "Send OTP"}
-                          </Button>
-                          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-                        </div>
-                      ) : (
+                {isAuthenticated ? (
+                  <Link href="/dashboard">
+                    <Button size="lg" className="gap-2">Go to Dashboard <span aria-hidden="true">&rarr;</span></Button>
+                  </Link>
+                ) : (
+                  <>
+                    {/* User Login Dialog */}
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="lg" className="gap-2">Use as User</Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>User Login - Aadhaar</DialogTitle>
+                          <DialogDescription>Authenticate using your Aadhaar number and OTP.</DialogDescription>
+                        </DialogHeader>
                         <div className="space-y-3">
-                          <div className="text-sm text-muted-foreground">
-                            OTP sent to {userEmail}
-                          </div>
-                          <Input placeholder="Enter 6-digit OTP" value={otp} onChange={(e) => setOtp(e.target.value)} />
-                          <Button 
-                            className="w-full" 
-                            onClick={handleVerifyOtp}
-                            disabled={otp.length < 4 || loading}
-                          >
-                            <LogIn className="h-4 w-4 mr-2" /> 
-                            {loading ? "Verifying..." : "Verify & Login"}
-                          </Button>
-                          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                          <Label htmlFor="aadhaar">Aadhaar Number</Label>
+                          <Input id="aadhaar" placeholder="xxxx-xxxx-xxxx" value={aadhaar} onChange={(e) => setAadhaar(e.target.value)} />
+                          {!otpSent ? (
+                            <div>
+                              <Button 
+                                onClick={handleSendOtp} 
+                                disabled={!aadhaar || aadhaar.length < 12 || loading}
+                              >
+                                {loading ? "Sending..." : "Send OTP"}
+                              </Button>
+                              {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="text-sm text-muted-foreground">
+                                OTP sent to {userEmail}
+                              </div>
+                              <Input placeholder="Enter 6-digit OTP" value={otp} onChange={(e) => setOtp(e.target.value)} />
+                              <Button 
+                                className="w-full" 
+                                onClick={handleVerifyOtp}
+                                disabled={otp.length < 4 || loading}
+                              >
+                                <LogIn className="h-4 w-4 mr-2" /> 
+                                {loading ? "Verifying..." : "Verify & Login"}
+                              </Button>
+                              {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                      </DialogContent>
+                    </Dialog>
 
-                {/* Authenticator Login Dialog */}
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button size="lg" variant="secondary" className="gap-2">Use as Authenticator</Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Authenticator Login</DialogTitle>
-                      <DialogDescription>Surveyor / Officer / Registrar login via Aadhaar + OTP.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      <Label htmlFor="aadhaar-auth">Aadhaar Number</Label>
-                      <Input id="aadhaar-auth" placeholder="xxxx-xxxx-xxxx" />
-                      <div className="flex gap-2">
-                        <Link href="/registrar" className="w-full">
-                          <Button className="w-full">Proceed</Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                    {/* Authenticator Login Dialog */}
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="lg" variant="secondary" className="gap-2">Use as Authenticator</Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Authenticator Login</DialogTitle>
+                          <DialogDescription>Surveyor / Officer / Registrar login via Aadhaar + OTP.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <Label htmlFor="aadhaar-auth">Aadhaar Number</Label>
+                          <Input id="aadhaar-auth" placeholder="xxxx-xxxx-xxxx" />
+                          <div className="flex gap-2">
+                            <Link href="/registrar" className="w-full">
+                              <Button className="w-full">Proceed</Button>
+                            </Link>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
 
-                {/* Surveyor Login Dialog */}
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button size="lg" variant="outline" className="gap-2">Use as Surveyor</Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Surveyor Login</DialogTitle>
-                      <DialogDescription>Login via Aadhaar + OTP to view assigned site verifications.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      <Label htmlFor="aadhaar-surveyor">Aadhaar Number</Label>
-                      <Input id="aadhaar-surveyor" placeholder="xxxx-xxxx-xxxx" />
-                      <div className="flex gap-2">
-                        <Link href="/surveyor" className="w-full">
-                          <Button className="w-full">Proceed</Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                    {/* Surveyor Login Dialog */}
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="lg" variant="outline" className="gap-2">Use as Surveyor</Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Surveyor Login</DialogTitle>
+                          <DialogDescription>Login via Aadhaar + OTP to view assigned site verifications.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <Label htmlFor="aadhaar-surveyor">Aadhaar Number</Label>
+                          <Input id="aadhaar-surveyor" placeholder="xxxx-xxxx-xxxx" />
+                          <div className="flex gap-2">
+                            <Link href="/surveyor" className="w-full">
+                              <Button className="w-full">Proceed</Button>
+                            </Link>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                )}
               </div>
             </div>
             <div className="relative">

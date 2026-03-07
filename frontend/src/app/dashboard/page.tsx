@@ -1,5 +1,7 @@
 "use client"
 
+import { motion } from "framer-motion";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -122,7 +124,19 @@ export default function DashboardPage() {
 
         <TabsContent value="properties" className="mt-6">
           {loading ? (
-            <div className="text-sm text-muted-foreground">Loading your properties...</div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="animate-pulse border-border/60 bg-card/60 backdrop-blur h-48">
+                  <CardHeader className="space-y-3">
+                    <div className="h-6 bg-muted/60 rounded w-2/3"></div>
+                    <div className="h-4 bg-muted/60 rounded w-1/2"></div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-12 bg-muted/50 rounded w-full mt-4"></div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : error ? (
             <div className="text-sm text-red-500">{error}</div>
           ) : (
@@ -150,12 +164,19 @@ export default function DashboardPage() {
                     const value = (p as any).value ?? totalArea ?? "--";
                     const title = p.title || p.name || p.plot_number || `Property ${id}`;
                     return (
-                      <Card
+                      <motion.div
                         key={id}
-                        className="group border-border/60 bg-card/60 backdrop-blur cursor-pointer hover:ring-1 hover:ring-border"
-                        onClick={() => router.push(`/properties/${id}`)}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.1 }}
+                        whileHover={{ y: -4 }}
+                        className="h-full"
                       >
-                        <CardHeader>
+                        <Card
+                          className="group h-full flex flex-col border-border/60 bg-card/60 backdrop-blur cursor-pointer hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 hover:border-primary/30"
+                          onClick={() => router.push(`/properties/${id}`)}
+                        >
+                          <CardHeader className="flex-none">
                           <div className="flex items-center justify-between">
                             <CardTitle className="text-base">{title}</CardTitle>
                             <Badge variant="secondary">{status}</Badge>
@@ -207,7 +228,8 @@ export default function DashboardPage() {
                             <Button size="sm" variant="default" onClick={(e) => { e.stopPropagation(); setTxPropertyId(id); setTxBuyerEmail(null); setTxId(null); setTxStatus(null); setTxSellerOtp(""); setTxError(""); setTxOpen(true); }}>Transfer</Button>
                           </div>
                         </CardContent>
-                      </Card>
+                        </Card>
+                      </motion.div>
                     );
                   })
                 )}
