@@ -2,7 +2,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 
-from project.utils.cloudant_client import service
+from project.utils.cloudant_client import _select
 
 
 def _ok(**kwargs):
@@ -43,32 +43,20 @@ def login_surveyor(request):
     el = _norm_email(email)
 
     try:
-        # Try multiple role casings and common misspelling SURVEYER
-        # Robust email + role matching (support casing, field name variants, and stray spaces)
-        email_selector = {
-            "$or": [
-                {"Email": {"$eq": email}},
-                {"Email": {"$eq": el}},
-                {"email": {"$eq": email}},
-                {"email": {"$eq": el}},
-            ]
-        }
-        role_variants = [
-            "SURVEYOR", "Surveyor", "surveyor",
-            "SURVEYER", "Surveyer", "surveyer",
-            "SURVEYOR ", "Surveyor ", "surveyor ",
-        ]
-        role_selector = {"$or": [
-            {"role": {"$in": role_variants}},
-            {"Role": {"$in": role_variants}},
-            {"designation": {"$in": role_variants}},
-        ]}
-        selector = {"$and": [email_selector, role_selector]}
-        resp = service.post_find(db="govt-citizen", selector=selector).get_result()
-        docs = resp.get("docs", [])
+        docs = _select("govt_citizens", {"email": f"eq.{el}"})
+        if not docs:
+            # attempt exact original case as fallback just in case
+            docs = _select("govt_citizens", {"email": f"eq.{email}"})
+            
         if not docs:
             return _error('Not a surveyor', 403)
+            
         doc = docs[0]
+        role = str(doc.get("role") or doc.get("Role") or doc.get("designation") or "").upper()
+        
+        if "SURVEYOR" not in role and "SURVEYER" not in role:
+            return _error('Not a surveyor', 403)
+
         # Return a minimal profile
         profile = {
             "email": doc.get("Email") or doc.get("email"),
@@ -85,7 +73,6 @@ def login_surveyor(request):
 def list_pending_for_surveyor(request):
     """
     List transactions assigned to this surveyor that are pending surveyor approval.
-    Body: { email: string }
     """
     if request.method != 'POST':
         return _error('POST required', 405)
@@ -101,47 +88,24 @@ def list_pending_for_surveyor(request):
     el = _norm_email(email)
 
     try:
-        # Verify surveyor
-        email_selector = {
-            "$or": [
-                {"Email": {"$eq": email}},
-                {"Email": {"$eq": el}},
-                {"email": {"$eq": email}},
-                {"email": {"$eq": el}},
-            ]
-        }
-        role_variants = [
-            "SURVEYOR", "Surveyor", "surveyor",
-            "SURVEYER", "Surveyer", "surveyer",
-            "SURVEYOR ", "Surveyor ", "surveyor ",
-        ]
-        role_selector = {"$or": [
-            {"role": {"$in": role_variants}},
-            {"Role": {"$in": role_variants}},
-            {"designation": {"$in": role_variants}},
-        ]}
-        sel = {"$and": [email_selector, role_selector]}
-        chk = service.post_find(db="govt-citizen", selector=sel).get_result()
-        if not chk.get("docs"):
+        # Verify surveyor exists
+        docs = _select("govt_citizens", {"email": f"eq.{el}"})
+        if not docs: docs = _select("govt_citizens", {"email": f"eq.{email}"})
+        
+        if not docs:
+            return _error('Not a surveyor', 403)
+            
+        role = str(docs[0].get("role") or "").upper()
+        if "SURVEYOR" not in role and "SURVEYER" not in role:
             return _error('Not a surveyor', 403)
         
-        # Fetch transactions assigned to this surveyor and pending
-        selector = {
-            "$and": [
-                {"status": {"$eq": "PENDING_SURVEYOR_APPROVAL"}},
-                {"$or": [
-                    {"surveyor_email": {"$eq": email}},
-                    {"surveyor_email": {"$eq": el}},
-                ]}
-            ]
-        }
-        tx_resp = service.post_find(db="in-transaction", selector=selector).get_result()
-        docs = tx_resp.get("docs", [])
-        # Sort newest first
-        try:
-            docs.sort(key=lambda d: d.get("updated_at") or d.get("created_at") or "", reverse=True)
-        except Exception:
-            pass
+        # Fetch transactions
+        docs = _select("in_transaction", {
+            "status": "eq.PENDING_SURVEYOR_APPROVAL",
+            "surveyor_email": f"eq.{el}",
+            "order": "updated_at.desc"
+        })
+        
         # Map to lightweight items
         items = []
         for d in docs:

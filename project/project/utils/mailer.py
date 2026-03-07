@@ -58,7 +58,7 @@ def render_otp_html(name: str, otp: str, title: str = "Your Login OTP", subtitle
 """
 
 
-def send_otp_email(to_email: str, otp: str, subject: str = None, body_prefix: str = None, async_send: bool = True, html_body: str | None = None) -> bool:
+def send_otp_email(to_email: str, otp: str, subject: str = "Your BlockEstate OTP", body_prefix: str = "Use the following One-Time Password (OTP) to proceed.", async_send: bool = True, html_body: str | None = None) -> bool:
     """
     Send an OTP email using Django's configured SMTP settings.
     If async_send=True (default), the email is dispatched in a background thread and this

@@ -18,6 +18,21 @@ def get_user_properties(request):
         
         try:
             properties = find_properties_by_wallet(wallet_address)
+            
+            # Enrich with active sale data so the frontend knows what's already listed
+            active_sales = get_all_properties_for_sale()
+            sale_map = {s.get("property_id"): s for s in active_sales}
+            
+            for prop in properties:
+                pid = prop.get("property_id")
+                if pid in sale_map:
+                    prop["listed_for_sale"] = True
+                    prop["asking_price"] = sale_map[pid].get("asking_price")
+                    prop["status"] = "FOR_SALE"
+                else:
+                    prop["listed_for_sale"] = False
+                    prop["status"] = prop.get("status") or "OWNED"
+                    
             return JsonResponse({
                 "success": True, 
                 "properties": properties,

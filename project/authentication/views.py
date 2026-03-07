@@ -38,7 +38,8 @@ def verify_aadhaar_pan(request):
 
         # OTP generate
         otp = str(random.randint(100000, 999999))
-        OTP_STORE[email] = otp
+        email_key = email.strip().lower() if email else ""
+        OTP_STORE[email_key] = otp
 
         # Try to send OTP via email; if it fails, still print to console for dev
         try:
@@ -67,9 +68,18 @@ def verify_otp(request):
 
         email = body.get("email")
         otp = body.get("otp")
+        
+        # Ensure email and otp are properly formatted for comparison
+        email_key = email.strip().lower() if email else ""
+        otp_str = str(otp).strip() if otp else ""
 
-        if OTP_STORE.get(email) == otp:
-            del OTP_STORE[email]  # ek bar use hone ke baad hata do
+        print(f"DEBUG TRYING TO VERIFY:")
+        print(f"Incoming Email Key: '{email_key}'")
+        print(f"Incoming OTP: '{otp_str}'")
+        print(f"Current OTP_STORE: {OTP_STORE}")
+
+        if email_key in OTP_STORE and OTP_STORE[email_key] == otp_str:
+            del OTP_STORE[email_key]  # ek bar use hone ke baad hata do
             return JsonResponse({"success": True, "message": "OTP verified"})
         else:
             return JsonResponse({"success": False, "message": "Invalid OTP"})
