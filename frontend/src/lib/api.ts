@@ -1,6 +1,7 @@
 import { VerifyResponse, OtpResponse, UserProfileResponse, UserPropertiesResponse, MarketplaceResponse, ChatResponse, ChatListResponse, SendMessageResponse, InitiateChatResponse, TxResponse, TransactionsListResponse } from './types';
 
-const API_BASE_URL = 'http://localhost:8000';
+// Default to the live Render backend, or use local if specified in an environment variable natively
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://blockestate-3-0.onrender.com';
 
 export class ApiClient {
   private baseUrl: string;
