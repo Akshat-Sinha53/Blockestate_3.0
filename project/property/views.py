@@ -2,6 +2,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import json
+import requests
+from project.utils.pinata_client import upload_json_to_ipfs
 
 from project.utils.cloudant_client import find_properties_by_wallet, get_property_by_id, get_all_properties, find_user_by_email, insert_doc, find_app_user_by_aadhaar, update_property, insert_property_for_sale, get_all_properties_for_sale, remove_property_from_sale, unlist_property_from_sale
 
@@ -32,6 +34,29 @@ def get_user_properties(request):
                 else:
                     prop["listed_for_sale"] = False
                     prop["status"] = prop.get("status") or "OWNED"
+                
+                # --- AUTO-MINTING INTEGRATION ---
+                # Check if property lacks an NFT and the user has a seemingly valid Solana wallet length
+                if not prop.get("mint_address") and len(wallet_address) > 30:
+                    try:
+                        ipfs_uri = upload_json_to_ipfs(prop)
+                        res = requests.post("http://localhost:4000/mint", json={
+                            "metadata_uri": ipfs_uri,
+                            "seller_wallet": wallet_address,
+                            "property_name": f"LandRecord_{pid}"
+                        }, timeout=20)
+                        if res.ok and res.json().get("success"):
+                            prop["mint_address"] = res.json().get("mint_address")
+                            prop["ipfs_uri"] = ipfs_uri
+                            update_property({
+                                "property_id": pid,
+                                "mint_address": prop["mint_address"],
+                                "ipfs_uri": ipfs_uri
+                            })
+                        else:
+                            print(f"Auto-mint API failed for {pid}: {res.text}")
+                    except Exception as e:
+                        print(f"Auto-mint error for {pid}: {e}")
                     
             return JsonResponse({
                 "success": True, 
@@ -235,7 +260,7 @@ def dev_seed_data(request):
     DEV ONLY: Seed one user and one property into Cloudant so the flow can be tested.
     Only allowed when DEBUG=True.
     """
-    if request.method == "POST":
+    if request.method in ["GET", "POST"]:
         if not settings.DEBUG:
             return JsonResponse({"success": False, "message": "Not allowed"}, status=403)
         try:
@@ -245,7 +270,8 @@ def dev_seed_data(request):
 
         # Defaults (can be overridden via body)
         email = body.get("Email") or body.get("email") or "sneha.iyer@example.com"
-        wallet = body.get("wallet") or "nb324k32j4jb332"
+        # Using a valid Solana dummy wallet instead of invalid 'nb324k32j4jb332' to prevent base58 crash
+        wallet = body.get("wallet") or "7AW5gitnwLapeYGejTE8pLYSTSoMTuwnrUmehJLrA1N3"
         property_id = body.get("property_id") or "P-001"
 
         # Seed user in app-users and govt-citizen for OTP lookup
@@ -278,6 +304,28 @@ def dev_seed_data(request):
             "Current_use": "Residential",
             "total area": "1200 sqft",
         }
+        
+        # --- BLOCKCHAIN INTEGRATION ---
+        try:
+            # 1. Upload metadata to IPFS
+            ipfs_uri = upload_json_to_ipfs(prop_doc)
+            
+            # 2. Call Node.js API to Mint & Register to Seller
+            res = requests.post("http://localhost:4000/mint", json={
+                "metadata_uri": ipfs_uri,
+                "seller_wallet": wallet,
+                "property_name": f"LandRecord_{property_id}"
+            }, timeout=20)
+            
+            if res.ok and res.json().get("success"):
+                mint_address = res.json().get("mint_address")
+                prop_doc["mint_address"] = mint_address
+                prop_doc["ipfs_uri"] = ipfs_uri
+            else:
+                print(f"Mint error: {res.text}")
+        except Exception as e:
+            print(f"Blockchain seed error: {e}")
+
         try:
             insert_doc(db_name="property-details", doc=prop_doc)
         except Exception as e:

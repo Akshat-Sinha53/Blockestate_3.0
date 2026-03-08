@@ -16,7 +16,9 @@ from project.utils.cloudant_client import (
     assign_random_surveyor,
     find_transactions_for_user,
     find_user_by_aadhaar,
+    update_property,
 )
+import requests
 from project.utils.mailer import send_otp_email, render_otp_html, send_notification_email
 
 # Simple OTP stores for transaction flow
@@ -412,6 +414,81 @@ def buyer_agree(request):
     update_transaction_doc(tx)
 
     return _ok(transaction={"id": tx.get("_id"), "status": tx.get("status")})
+
+
+@csrf_exempt
+def authenticator_approve(request):
+    """
+    Final step where authenticator triggers the blockchain transfer.
+    Body: { transaction_id: str, authenticator_email: str }
+    Calls Node.js backend port 4000 to transfer NFT on Solana.
+    Moves status to COMPLETED and updates DB.
+    """
+    if request.method != 'POST':
+        return _error('POST required', 405)
+    body = _require_json(request)
+    if body is None:
+        return _error('Invalid JSON')
+
+    tx_id = body.get('transaction_id')
+    authenticator = body.get('authenticator_email')
+
+    if not tx_id or not authenticator:
+        return _error('transaction_id and authenticator_email are required')
+
+    tx = get_transaction_by_id(tx_id)
+    if not tx:
+        return _error('Transaction not found', 404)
+
+    if tx.get('status') != 'PENDING_AUTHENTICATOR_APPROVAL':
+        return _error('Transaction is not ready for authenticator approval', 400)
+
+    # 1. Fetch Property details
+    prop_id = tx.get('property_id')
+    prop = get_property_by_id(prop_id)
+    if not prop:
+        return _error('Property not found', 404)
+
+    mint_address = prop.get('mint_address')
+    if not mint_address:
+        return _error('No mint_address associated with this property! NFT does not exist.', 400)
+
+    # 2. Get the buyer's wallet (the destination)
+    buyer_wallet = tx.get('buyer_wallet')
+    if not buyer_wallet:
+        return _error('Buyer wallet is missing', 400)
+
+    # 3. Seller key path - explicitly mapped for hackathon testing identities
+    seller_key_path = "D:/HACK-N-WIN/Blockestate_3.0/nft_backend/blockchain_blockestate/seller_user1.json"
+
+    # 4. Trigger the Express.js Solana API running on port 4000
+    try:
+        response = requests.post("http://localhost:4000/transfer", json={
+            "mint_address": mint_address,
+            "seller_private_key_path": seller_key_path,
+            "buyer_wallet_address": buyer_wallet
+        }, timeout=15)
+        
+        response_data = response.json()
+        if not response.ok or not response_data.get('success'):
+            return _error(f"Blockchain transfer failed: {response_data.get('error', 'Unknown Error')}", 500)
+    except Exception as e:
+        print(f"Express API error: {e}")
+        return _error('Failed to communicate with Solana network engine.', 500)
+
+    # 5. Success! Update transaction to COMPLETED
+    tx['status'] = 'COMPLETED'
+    update_transaction_doc(tx)
+
+    # 6. Update actual property owner in the main DB
+    prop['wallet_address'] = buyer_wallet
+    if 'wallet' in prop:
+        prop['wallet'] = buyer_wallet
+    prop['status'] = 'OWNED'
+    prop['listed_for_sale'] = False
+    update_property(prop)
+
+    return _ok(transaction={"id": tx.get("_id"), "status": tx.get("status"), "message": "Blockchain Transfer Complete"})
 
 
 @csrf_exempt

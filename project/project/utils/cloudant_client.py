@@ -177,10 +177,11 @@ def insert_property(property_data):
 def update_property(property_data):
     if not property_data: return {"error": "No data"}
     d = dict(property_data)
-    i = d.pop("_id", None) or d.pop("id", None)
+    i = d.pop("_id", None) or d.pop("id", None) or d.get("property_id")
     d.pop("_rev", None)
     if not i: return {"error": "Missing _id"}
-    return _update("property_details", "id", i, d)
+    match_col = "property_id" if d.get("property_id") else "id"
+    return _update("property_details", match_col, i, d)
 
 def insert_property_for_sale(property_id, asking_price, wallet_address=None):
     from datetime import datetime

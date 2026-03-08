@@ -27,6 +27,7 @@ urlpatterns = [
     path('transactions/request-buyer-otp/', transaction_views.request_buyer_otp, name='request_buyer_otp'),
     path('transactions/surveyor-approve/', transaction_views.surveyor_approve, name='surveyor_approve'),
     path('transactions/buyer-agree/', transaction_views.buyer_agree, name='buyer_agree'),
+    path('transactions/authenticator-approve/', transaction_views.authenticator_approve, name='authenticator_approve'),
     path('transactions/list/', transaction_views.list_transactions, name='list_transactions'),
     path('transactions/<str:tx_id>/info/', transaction_views.get_transaction_info, name='get_transaction_info'),
 
